@@ -9,8 +9,9 @@ import time
 from .config import Config, default_config_path, load_config, write_default_config
 from .git_info import get_repository_info
 from .phases import phase_table
-from .presence import build_payload, render_payload
-from .state import default_state_path, load_state, write_state
+from .presence import build_multi_project_payload, build_payload, render_payload
+from .project_detection import distinct_projects, iter_node_repl_candidates
+from .state import default_state_path, load_state, write_repo_path, write_state
 
 
 def _config_from_args(args: argparse.Namespace) -> Config:
@@ -49,6 +50,14 @@ def cmd_set_phase(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_set_project(args: argparse.Namespace) -> int:
+    config = _config_from_args(args)
+    state_path = Path(config.state_file).expanduser() if config.state_file else default_state_path()
+    path = write_repo_path(state_path, args.path)
+    print(path)
+    return 0
+
+
 def cmd_render(args: argparse.Namespace) -> int:
     config = _config_from_args(args)
     payload = render_payload(config, args.repo or config.repo_path)
@@ -56,33 +65,41 @@ def cmd_render(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_run(args: argparse.Namespace) -> int:
-    config = _config_from_args(args)
+def _connect_presence(config: Config):
     if not config.enabled:
         print("codex-discord-rpc is disabled by config", file=sys.stderr)
-        return 0
+        return None, 0
     if not config.client_id:
         print(
             f"client_id is required. Run `codex-discord-rpc init` and edit {default_config_path()}",
             file=sys.stderr,
         )
-        return 2
+        return None, 2
 
     try:
         from pypresence import Presence
     except ImportError as exc:
         print(f"pypresence is not installed: {exc}", file=sys.stderr)
-        return 2
+        return None, 2
 
-    repository = get_repository_info(args.repo or config.repo_path)
-    state_path = Path(config.state_file).expanduser() if config.state_file else default_state_path()
-    started_at = int(time.time())
     rpc = Presence(config.client_id)
     try:
         rpc.connect()
     except Exception as exc:  # pypresence raises library-specific exceptions for local RPC failures.
         print(f"failed to connect to Discord Rich Presence: {exc}", file=sys.stderr)
-        return 3
+        return None, 3
+    return rpc, 0
+
+
+def cmd_run(args: argparse.Namespace) -> int:
+    config = _config_from_args(args)
+    rpc, status = _connect_presence(config)
+    if rpc is None:
+        return status
+
+    repository = get_repository_info(args.repo or config.repo_path)
+    state_path = Path(config.state_file).expanduser() if config.state_file else default_state_path()
+    started_at = int(time.time())
 
     try:
         while True:
@@ -90,6 +107,61 @@ def cmd_run(args: argparse.Namespace) -> int:
             payload = build_payload(config, repository, runtime_state.phase, runtime_state.started_at)
             try:
                 rpc.update(**payload.as_rpc_kwargs())
+            except Exception as exc:
+                print(f"failed to update Discord Rich Presence: {exc}", file=sys.stderr)
+                return 3
+            if args.once:
+                rpc.clear()
+                return 0
+            time.sleep(config.refresh_interval_seconds)
+    except KeyboardInterrupt:
+        rpc.clear()
+        return 0
+
+
+def _monitor_payload(config: Config, started_at: int):
+    state_path = Path(config.state_file).expanduser() if config.state_file else default_state_path()
+    runtime_state = load_state(state_path, config.phase, started_at)
+
+    if runtime_state.repo_path:
+        repository = get_repository_info(runtime_state.repo_path)
+        return build_payload(config, repository, runtime_state.phase, runtime_state.started_at)
+
+    if config.auto_detect_projects:
+        projects = distinct_projects(iter_node_repl_candidates())
+        if len(projects) == 1:
+            repository = get_repository_info(projects[0].identity)
+            return build_payload(config, repository, runtime_state.phase, projects[0].started_at)
+        if len(projects) > 1:
+            return build_multi_project_payload(config, len(projects), started_at)
+        return None
+
+    repository = get_repository_info(config.repo_path)
+    return build_payload(config, repository, runtime_state.phase, runtime_state.started_at)
+
+
+def cmd_monitor(args: argparse.Namespace) -> int:
+    config = _config_from_args(args)
+    rpc, status = _connect_presence(config)
+    if rpc is None:
+        return status
+
+    started_at = int(time.time())
+    try:
+        active = False
+        while True:
+            payload = _monitor_payload(config, started_at)
+            if payload is None:
+                if active:
+                    rpc.clear()
+                    active = False
+                if args.once:
+                    return 0
+                time.sleep(config.refresh_interval_seconds)
+                continue
+            try:
+                rpc.update(**payload.as_rpc_kwargs())
+                active = True
             except Exception as exc:
                 print(f"failed to update Discord Rich Presence: {exc}", file=sys.stderr)
                 return 3
@@ -125,6 +197,14 @@ def build_parser() -> argparse.ArgumentParser:
     set_parser.add_argument("--language", choices=["ja", "en"])
     set_parser.set_defaults(func=cmd_set_phase)
 
+    set_project_parser = subcommands.add_parser(
+        "set-project",
+        help="Write an explicit project path to state.json",
+    )
+    set_project_parser.add_argument("path")
+    set_project_parser.add_argument("--language", choices=["ja", "en"])
+    set_project_parser.set_defaults(func=cmd_set_project)
+
     render_parser = subcommands.add_parser("render", help="Render the Discord payload as JSON")
     render_parser.add_argument("--repo", help="Repository path")
     render_parser.add_argument("--phase", help="Phase key")
@@ -138,6 +218,17 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--client-id", help="Discord application client ID")
     run_parser.add_argument("--once", action="store_true", help="Update once and exit")
     run_parser.set_defaults(func=cmd_run)
+
+    monitor_parser = subcommands.add_parser(
+        "monitor",
+        help="Auto-detect Codex Desktop projects and update Rich Presence",
+    )
+    monitor_parser.add_argument("--repo", help="Fallback repository path")
+    monitor_parser.add_argument("--phase", help="Initial phase key")
+    monitor_parser.add_argument("--language", choices=["ja", "en"])
+    monitor_parser.add_argument("--client-id", help="Discord application client ID")
+    monitor_parser.add_argument("--once", action="store_true", help="Update once and exit")
+    monitor_parser.set_defaults(func=cmd_monitor)
 
     return parser
 

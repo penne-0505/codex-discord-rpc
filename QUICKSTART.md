@@ -23,11 +23,23 @@ Discord Desktopへ反映する場合:
 uv run codex-discord-rpc run --repo .
 ```
 
+Codex Desktopのprojectを自動検出して反映する場合:
+
+```bash
+uv run codex-discord-rpc monitor
+```
+
 フェーズ更新:
 
 ```bash
 uv run codex-discord-rpc set-phase editing
 uv run codex-discord-rpc set-phase running_tests
+```
+
+project pathを明示する場合:
+
+```bash
+uv run codex-discord-rpc set-project /path/to/project
 ```
 
 ## 3. 開発時に読むファイル

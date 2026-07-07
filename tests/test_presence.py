@@ -2,7 +2,7 @@ from pathlib import Path
 
 from codex_discord_rpc.config import Config
 from codex_discord_rpc.git_info import RepositoryInfo
-from codex_discord_rpc.presence import build_payload
+from codex_discord_rpc.presence import build_multi_project_payload, build_payload
 
 
 def test_builds_japanese_repo_phase_timer_payload() -> None:
@@ -44,3 +44,14 @@ def test_supports_english_labels_by_config() -> None:
 
     assert payload["details"] == "Working on koto"
     assert payload["state"] == "Waiting for input"
+
+
+def test_builds_japanese_multi_project_payload_without_buttons() -> None:
+    config = Config(language="ja", show_timer=True, show_repository_button=True)
+
+    payload = build_multi_project_payload(config, 3, started_at=1_700_000_000).as_rpc_kwargs()
+
+    assert payload["details"] == "3個のCodexプロジェクトで作業中"
+    assert payload["state"] == "複数プロジェクト"
+    assert payload["start"] == 1_700_000_000
+    assert "buttons" not in payload

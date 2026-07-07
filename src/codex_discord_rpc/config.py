@@ -14,6 +14,7 @@ language = "ja"
 client_id = ""
 show_repository_button = true
 show_timer = true
+auto_detect_projects = true
 repo_path = "."
 phase = "editing"
 refresh_interval_seconds = 15
@@ -28,6 +29,7 @@ class Config:
     client_id: str = ""
     show_repository_button: bool = True
     show_timer: bool = True
+    auto_detect_projects: bool = True
     repo_path: str = "."
     phase: str = "editing"
     refresh_interval_seconds: int = 15
@@ -49,6 +51,7 @@ class Config:
             client_id=str(values.get("client_id", "")).strip(),
             show_repository_button=bool(values.get("show_repository_button", True)),
             show_timer=bool(values.get("show_timer", True)),
+            auto_detect_projects=bool(values.get("auto_detect_projects", True)),
             repo_path=str(values.get("repo_path", ".")),
             phase=normalize_phase(str(values.get("phase", "editing"))),
             refresh_interval_seconds=interval,

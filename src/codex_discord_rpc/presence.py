@@ -58,6 +58,26 @@ def build_payload(
     )
 
 
+def build_multi_project_payload(
+    config: Config,
+    project_count: int,
+    started_at: int | None = None,
+) -> PresencePayload:
+    details = (
+        f"{project_count}個のCodexプロジェクトで作業中"
+        if config.language == "ja"
+        else f"Working in {project_count} Codex projects"
+    )
+    state = "複数プロジェクト" if config.language == "ja" else "Multiple projects"
+    return PresencePayload(
+        details=details,
+        state=state,
+        start=int(started_at or time.time()) if config.show_timer else None,
+        buttons=None,
+        large_text="Codex",
+    )
+
+
 def render_payload(config: Config, repo_path: str | Path | None = None) -> PresencePayload:
     started_at = int(time.time())
     state_path = Path(config.state_file).expanduser() if config.state_file else None

@@ -24,6 +24,7 @@ related_prs: []
 ## Quality Goal
 
 Discordへ出す情報をrepo名、作業フェーズ、timerに絞り、GitHub URLボタンは安全に正規化できる場合だけ生成されることを確認する。
+`monitor` ではCodex Desktopの `node_repl` cwdをproject候補として扱い、複数project時に誤った単一repoを表示しないことを確認する。
 
 ## Acceptance Criteria
 
@@ -32,6 +33,8 @@ Discordへ出す情報をrepo名、作業フェーズ、timerに絞り、GitHub 
 - AC-003: `run` は設定されたDiscord client IDでRich Presence更新を試みる。
 - AC-004: GitHub remote URLが正規化できる場合だけ `リポジトリを見る` ボタンを生成する。
 - AC-005: README / Quickstart / AGENTS がプロジェクト固有の利用方法を説明している。
+- AC-006: `monitor` がCodex Desktop `node_repl` cwdからproject候補を検出できる。
+- AC-007: 複数distinct projectが検出された場合、aggregate project countを表示し、repository buttonを出さない。
 
 ## Intent-derived Invariants
 
@@ -39,6 +42,8 @@ Discordへ出す情報をrepo名、作業フェーズ、timerに絞り、GitHub 
 - INV-002: GitHubボタンは `git@github.com:owner/repo(.git)` または `https://github.com/owner/repo(.git)` から正規化できる場合だけ生成される。
 - INV-003: 日本語表示がデフォルトであり、英語表示は明示設定時だけ使われる。
 - INV-004: Discord接続なしでpayload生成を検証できるCLIとテストが存在する。
+- INV-005: `monitor` は `node_repl` cwdからdistinct project rootを検出し、複数project時は単一repoとして表示しない。
+- INV-006: `monitor` は認証ヘッダやcmdline全文を読まず、process cwd/exe/metadataだけを使ってproject候補を判定する。
 
 ## Risk Assessment
 
@@ -47,12 +52,14 @@ Discordへ出す情報をrepo名、作業フェーズ、timerに絞り、GitHub 
 - Regression risk: phaseやpayload schemaの変更で表示粒度が崩れる可能性がある。
 - Data safety risk: 永続化するのはphaseと開始時刻だけ。
 - Security / privacy risk: ファイル名、branch名、プロンプト本文、コマンド内容を表示しないことで抑制する。
+- Process inspection risk: MCP command lineには認証ヘッダが含まれる場合があるため、monitor実装はcmdline全文を読まない。
 - UX risk: Discord Desktop未起動時は `run` が失敗するため、`render` で事前確認できるようにする。
 - Agent misbehavior risk: template由来TODOやREADMEを残すと完成済みrepoと誤認しにくくなるため、docsをプロジェクト固有化する。
 
 ## Test Strategy
 
 - Unit: URL正規化、payload生成、言語切り替えをpytestで確認する。
+- Unit: fake `/proc` による `node_repl` cwd検出とdistinct project集約をpytestで確認する。
 - Integration: `uv run codex-discord-rpc render --repo .` を実行する。
 - E2E: Discord Desktop接続はローカル環境依存のため、client ID未設定時の安全な失敗のみ確認する。
 - Manual QA: README/Quickstart/AGENTS/TODOの内容を確認する。
@@ -68,14 +75,19 @@ Discordへ出す情報をrepo名、作業フェーズ、timerに絞り、GitHub 
 | AC-003 | TODO | `run` がclient ID必須で動作する | integration | `uv run codex-discord-rpc run --repo .` | client ID未設定では明示エラー | planned |
 | AC-004 | TODO | GitHub URLのときだけボタン生成 | unit | `uv run pytest` | URL正規化テストが通る | planned |
 | AC-005 | TODO | docsがプロジェクト固有化される | manual | README/Quickstart/AGENTS/TODO review | テンプレート初期案内が運用入口に残らない | planned |
+| AC-006 | TODO | `node_repl` cwdからproject候補を検出できる | unit | `uv run pytest` | fake `/proc` からcandidateを検出 | planned |
+| AC-007 | TODO | 複数project時はaggregate表示でbuttonなし | unit | `uv run pytest` | `2個のCodexプロジェクトで作業中` payload | planned |
 | INV-001 | intent | payloadに作業詳細を含めない | unit/review | `tests/test_presence.py`, diff review | details/state/start/buttonsのみ | planned |
 | INV-002 | intent | GitHub remoteだけボタン化する | unit | `tests/test_git_info.py` | non-GitHub remoteはNone | planned |
 | INV-003 | intent | 日本語デフォルト、英語は明示時のみ | unit | `tests/test_presence.py` | ja/enの期待値が通る | planned |
 | INV-004 | intent | Discord接続なしでpayload検証可能 | integration | `uv run codex-discord-rpc render --repo .` | DiscordなしでJSON出力 | planned |
+| INV-005 | intent | 複数projectを単一repoとして表示しない | unit | `tests/test_cli.py`, `tests/test_presence.py` | 複数project payloadでbuttonなし | planned |
+| INV-006 | intent | cmdline全文を読まずcwd/exe metadataだけを使う | diff review | `src/codex_discord_rpc/project_detection.py` | `/proc/*/cmdline` を読まない | planned |
 
 ## Manual QA Checklist
 
 - [ ] READMEがCodex Discord RPCの目的と利用手順を説明している。
+- [ ] READMEがmonitorと複数project表示を説明している。
 - [ ] Quickstartがテンプレート初期作業ではなく、このCLIの起動手順を説明している。
 - [ ] AGENTSがプロジェクト固有コマンドと表示境界を説明している。
 - [ ] TODOに完了済みテンプレート作業や不要な導入スコープ作業が残っていない。
@@ -85,6 +97,7 @@ Discordへ出す情報をrepo名、作業フェーズ、timerに絞り、GitHub 
 - [ ] 日本語phase labelが維持されている。
 - [ ] GitHub以外のremoteからボタンを作らない。
 - [ ] renderはDiscord Desktopなしで動く。
+- [ ] monitorはcmdline全文を読まない。
 
 ## High-risk Checklist
 
@@ -97,6 +110,7 @@ Use this section only for Risk High / Critical.
 - PRボタン。
 - branch名、ファイル名、プロンプト本文、コマンド内容の表示。
 - Codex内部hookとの自動統合。
+- foreground window / active thread detection.
 
 ## Open Questions
 

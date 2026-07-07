@@ -22,6 +22,7 @@ Japanese labels are used by default. English labels can be enabled in the config
 - Optional GitHub repository button
 - Japanese and English labels
 - Dry-run JSON rendering without connecting to Discord
+- Linux project auto-detection for Codex Desktop sessions
 - File-based phase updates for simple external automation
 
 ## Privacy
@@ -91,6 +92,7 @@ language = "ja"
 client_id = "YOUR_DISCORD_APPLICATION_CLIENT_ID"
 show_repository_button = true
 show_timer = true
+auto_detect_projects = true
 repo_path = "."
 phase = "editing"
 refresh_interval_seconds = 15
@@ -104,6 +106,8 @@ When `state_file` is empty, the default state file is:
 ```text
 ~/.local/state/codex-discord-rpc/state.json
 ```
+
+`auto_detect_projects` enables Linux `/proc` based Codex Desktop project detection. It looks for Codex Desktop `node_repl` helper processes and uses their working directories as project candidates.
 
 ## Usage
 
@@ -119,10 +123,59 @@ Start Rich Presence updates:
 uv run codex-discord-rpc run --repo .
 ```
 
+Monitor Codex Desktop projects automatically:
+
+```bash
+uv run codex-discord-rpc monitor
+```
+
+When one Codex project is detected, the project name is displayed. When multiple distinct projects are detected, the presence uses an aggregate display and omits repository buttons:
+
+```text
+Codex
+3個のCodexプロジェクトで作業中
+複数プロジェクト
+elapsed time
+```
+
 Update the current phase:
 
 ```bash
 uv run codex-discord-rpc set-phase running_tests
+```
+
+Set an explicit project path:
+
+```bash
+uv run codex-discord-rpc set-project /path/to/project
+```
+
+## systemd user service
+
+For always-on local use, run `monitor` as a user service.
+
+Example `~/.config/systemd/user/codex-discord-rpc.service`:
+
+```ini
+[Unit]
+Description=Codex Discord Rich Presence
+
+[Service]
+Type=simple
+WorkingDirectory=/path/to/codex-discord-rpc
+ExecStart=/path/to/codex-discord-rpc/.venv/bin/codex-discord-rpc monitor
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+```
+
+Enable it:
+
+```bash
+systemctl --user daemon-reload
+systemctl --user enable --now codex-discord-rpc.service
 ```
 
 List supported phases:
