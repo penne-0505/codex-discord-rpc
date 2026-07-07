@@ -61,6 +61,7 @@ def test_run_once_updates_presence_with_fake_rpc(
 def test_monitor_once_uses_multiple_project_payload(
     tmp_path: Path,
     monkeypatch,
+    capsys,
 ) -> None:
     module = types.ModuleType("pypresence")
     module.Presence = FakePresence
@@ -94,3 +95,35 @@ def test_monitor_once_uses_multiple_project_payload(
     assert instance.updates[0]["details"] == "2個のCodexプロジェクトで作業中"
     assert instance.updates[0]["state"] == "複数プロジェクト"
     assert "buttons" not in instance.updates[0]
+    stderr = capsys.readouterr().err
+    assert "monitor started" in stderr
+    assert "detected 2 Codex projects" in stderr
+    assert "updated Discord Rich Presence" in stderr
+
+
+def test_monitor_logs_detection_before_client_id_validation(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    monkeypatch.setattr(
+        "codex_discord_rpc.cli.iter_node_repl_candidates",
+        lambda: [ProjectCandidate(pid=1, started_at=10, cwd=project, identity=project)],
+    )
+
+    result = main(
+        [
+            "--config",
+            str(tmp_path / "missing-config.toml"),
+            "monitor",
+            "--once",
+        ]
+    )
+
+    assert result == 2
+    stderr = capsys.readouterr().err
+    assert "monitor started" in stderr
+    assert f"detected Codex project {project}" in stderr
+    assert "client_id is required" in stderr

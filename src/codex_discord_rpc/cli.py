@@ -14,6 +14,10 @@ from .project_detection import distinct_projects, iter_node_repl_candidates
 from .state import default_state_path, load_state, write_repo_path, write_state
 
 
+def _log(message: str) -> None:
+    print(f"[codex-discord-rpc] {message}", file=sys.stderr, flush=True)
+
+
 def _config_from_args(args: argparse.Namespace) -> Config:
     config = load_config(Path(args.config).expanduser() if args.config else None)
     values = config.__dict__ | {
@@ -125,35 +129,76 @@ def _monitor_payload(config: Config, started_at: int):
 
     if runtime_state.repo_path:
         repository = get_repository_info(runtime_state.repo_path)
-        return build_payload(config, repository, runtime_state.phase, runtime_state.started_at)
+        return (
+            build_payload(config, repository, runtime_state.phase, runtime_state.started_at),
+            f"state-project:{repository.root}",
+        )
 
     if config.auto_detect_projects:
         projects = distinct_projects(iter_node_repl_candidates())
         if len(projects) == 1:
             repository = get_repository_info(projects[0].identity)
-            return build_payload(config, repository, runtime_state.phase, projects[0].started_at)
+            return (
+                build_payload(config, repository, runtime_state.phase, projects[0].started_at),
+                f"detected-project:{repository.root}",
+            )
         if len(projects) > 1:
-            return build_multi_project_payload(config, len(projects), started_at)
-        return None
+            roots = ", ".join(str(project.identity) for project in projects[:5])
+            suffix = "" if len(projects) <= 5 else f", +{len(projects) - 5} more"
+            return (
+                build_multi_project_payload(config, len(projects), started_at),
+                f"detected-multiple:{len(projects)}:{roots}{suffix}",
+            )
+        return None, "no-projects"
 
     repository = get_repository_info(config.repo_path)
-    return build_payload(config, repository, runtime_state.phase, runtime_state.started_at)
+    return (
+        build_payload(config, repository, runtime_state.phase, runtime_state.started_at),
+        f"config-project:{repository.root}",
+    )
+
+
+def _log_monitor_status(status_key: str) -> None:
+    if status_key == "no-projects":
+        _log("no Codex projects detected")
+    elif status_key.startswith("detected-project:"):
+        _log(f"detected Codex project {status_key.removeprefix('detected-project:')}")
+    elif status_key.startswith("detected-multiple:"):
+        _, count, roots = status_key.split(":", 2)
+        _log(f"detected {count} Codex projects: {roots}")
+    elif status_key.startswith("state-project:"):
+        _log(f"using explicit state project {status_key.removeprefix('state-project:')}")
+    elif status_key.startswith("config-project:"):
+        _log(f"using configured fallback project {status_key.removeprefix('config-project:')}")
 
 
 def cmd_monitor(args: argparse.Namespace) -> int:
     config = _config_from_args(args)
+    started_at = int(time.time())
+    _log(
+        "monitor started "
+        f"auto_detect_projects={config.auto_detect_projects} "
+        f"interval={config.refresh_interval_seconds}s"
+    )
+    _, initial_status = _monitor_payload(config, started_at)
+    _log_monitor_status(initial_status)
+
     rpc, status = _connect_presence(config)
     if rpc is None:
         return status
 
-    started_at = int(time.time())
     try:
         active = False
+        last_status: str | None = initial_status
         while True:
-            payload = _monitor_payload(config, started_at)
+            payload, status_key = _monitor_payload(config, started_at)
+            if status_key != last_status:
+                _log_monitor_status(status_key)
+                last_status = status_key
             if payload is None:
                 if active:
                     rpc.clear()
+                    _log("cleared Discord Rich Presence")
                     active = False
                 if args.once:
                     return 0
@@ -161,6 +206,8 @@ def cmd_monitor(args: argparse.Namespace) -> int:
                 continue
             try:
                 rpc.update(**payload.as_rpc_kwargs())
+                if not active:
+                    _log("updated Discord Rich Presence")
                 active = True
             except Exception as exc:
                 print(f"failed to update Discord Rich Presence: {exc}", file=sys.stderr)
