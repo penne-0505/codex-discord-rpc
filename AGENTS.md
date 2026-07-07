@@ -12,3 +12,17 @@
 - 完了前には `qa-review` skill を使い、verification verdict を確認する。
 - 安全性・権限・secret・外部入力の扱いは [security for agents](_docs/standards/security_for_agents.md) に従う。
 - root 直下の Markdown は active project guidance として扱われる。一回限りの実装プロンプトを残す場合は `_evals/prompts/` 等へ移し、非運用の履歴資料として明記する。
+
+## プロジェクト固有コマンド
+
+- 依存関係の同期: `uv sync --extra dev`
+- テスト: `uv run pytest`
+- lint: `uv run ruff check .`
+- CLI payload確認: `uv run codex-discord-rpc render --repo .`
+- docs validator: `./scripts/check-docs.sh`
+
+## 実装上の境界
+
+- Discord Rich Presenceには repo名、作業フェーズ、timerのみを出す。
+- GitHub remote URLを正規化できる場合だけ `リポジトリを見る` ボタンを出す。
+- ファイル名、branch名、プロンプト本文、コマンド内容、secretを表示・保存・ログ出力しない。

@@ -1,0 +1,67 @@
+---
+title: "Intent: Codex Rich Presence CLI"
+status: active
+draft_status: n/a
+created_at: 2026-07-07
+updated_at: 2026-07-07
+references:
+  - "_docs/plan/Core/codex-rich-presence/plan.md"
+  - "_docs/qa/Core/codex-rich-presence/test-plan.md"
+related_issues: []
+related_prs: []
+---
+
+# Intent: Codex Rich Presence CLI
+
+## Context
+
+Codex作業中の状態をDiscordに表示したいが、プロンプト本文や対象ファイル名を外に出すと日常利用で情報量とプライバシーの釣り合いが崩れる。VSCode程度の粒度として、repo名、作業フェーズ、経過時間だけを基本表示にする。
+
+## Decision
+
+- Rich Presenceの基本表示は repo + phase + timer に限定する。
+- 表示言語は日本語をデフォルトにし、設定で英語へ切り替えられるようにする。
+- GitHub remoteから `https://github.com/<owner>/<repo>` を確実に作れる場合だけ、`リポジトリを見る` ボタンを出す。
+- 実行環境でDiscord Desktopへ接続できなくても検証できるよう、payloadをJSONとして出す `render` コマンドを提供する。
+- Codex内部hookには依存せず、state fileと `set-phase` コマンドで外部からフェーズ更新できる形にする。
+
+## Alternatives
+
+- PRボタンを常時表示する案: PRコンテキストを確実に取得できない場面が多く、初期版では過剰なので不採用。
+- branch名やファイル名を出す案: 作業内容の漏れや誤表示のリスクが増えるため不採用。
+- Discord公式Social SDKを直接使う案: Python CLIとしての軽量実装に合いにくいため、初期版ではローカルRPC互換の `pypresence` を使う。
+
+## Rationale
+
+Rich Presenceは見た人に「今何をしているか」を伝えるための表示であり、開発中の詳細ログではない。repo名、フェーズ、timerに限定すると、VSCodeのPresenceに近い粒度を保ちつつ、Codex固有の状態も伝えられる。
+
+## Consequences / Impact
+
+- Discord Desktopが動いていない環境では `run` は利用できないが、`render` でpayload検証はできる。
+- `client_id` はユーザー設定に置く必要がある。
+- GitHub以外のremoteではボタンは表示されない。
+
+## Quality Implications
+
+- 表示対象を限定し、将来の変更でファイル名やプロンプト本文が混入しないようにする。
+- GitHub URLの正規化は許可した形式だけを通し、不明なremoteからボタンを作らない。
+- Discord接続なしで主要ロジックをテストできる状態を維持する。
+
+## Intent-derived Invariants
+
+- INV-001: Rich Presence payloadはrepo名、phase、timer、正規化済みGitHub URLボタン以外の作業詳細を含まない。
+- INV-002: GitHubボタンは `git@github.com:owner/repo(.git)` または `https://github.com/owner/repo(.git)` から正規化できる場合だけ生成される。
+- INV-003: 日本語表示がデフォルトであり、英語表示は明示設定時だけ使われる。
+- INV-004: Discord接続なしでpayload生成を検証できるCLIとテストが存在する。
+
+## Enforced in (optional)
+
+- INV-001: `src/codex_discord_rpc/presence.py`, `tests/test_presence.py`
+- INV-002: `src/codex_discord_rpc/git_info.py`, `tests/test_git_info.py`
+- INV-003: `src/codex_discord_rpc/config.py`, `tests/test_presence.py`
+- INV-004: `src/codex_discord_rpc/cli.py`, `tests/test_presence.py`
+
+## Rollback / Follow-ups
+
+- 問題があれば `enabled = false` にするか、`run` を止めればDiscord表示は消える。
+- 将来、Codex側の安定hookが用意された場合は `set-phase` をhookから呼ぶ統合を追加できる。

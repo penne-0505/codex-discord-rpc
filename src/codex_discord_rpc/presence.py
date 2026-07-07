@@ -1,0 +1,66 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+import time
+from typing import Any
+
+from .config import Config
+from .git_info import RepositoryInfo, get_repository_info
+from .phases import phase_label
+from .state import load_state
+
+
+@dataclass(frozen=True)
+class PresencePayload:
+    details: str
+    state: str
+    start: int | None
+    buttons: list[dict[str, str]] | None
+    large_text: str
+
+    def as_rpc_kwargs(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "details": self.details,
+            "state": self.state,
+            "large_text": self.large_text,
+        }
+        if self.start is not None:
+            payload["start"] = self.start
+        if self.buttons:
+            payload["buttons"] = self.buttons
+        return payload
+
+
+def build_payload(
+    config: Config,
+    repository: RepositoryInfo,
+    phase: str,
+    started_at: int | None = None,
+) -> PresencePayload:
+    details = (
+        f"{repository.name} で作業中"
+        if config.language == "ja"
+        else f"Working on {repository.name}"
+    )
+    label = "リポジトリを見る" if config.language == "ja" else "View Repository"
+    buttons = (
+        [{"label": label, "url": repository.github_url}]
+        if config.show_repository_button and repository.github_url
+        else None
+    )
+    return PresencePayload(
+        details=details,
+        state=phase_label(phase, config.language),
+        start=int(started_at or time.time()) if config.show_timer else None,
+        buttons=buttons,
+        large_text="Codex",
+    )
+
+
+def render_payload(config: Config, repo_path: str | Path | None = None) -> PresencePayload:
+    started_at = int(time.time())
+    state_path = Path(config.state_file).expanduser() if config.state_file else None
+    runtime_state = load_state(state_path, config.phase, started_at)
+    repository = get_repository_info(repo_path or config.repo_path)
+    return build_payload(config, repository, runtime_state.phase, runtime_state.started_at)

@@ -1,100 +1,101 @@
-# Documentation Driven Development Template
+# Codex Discord RPC
 
-> This README is available in English and Japanese. English speakers, please scroll down.
+Codexで作業している状態をDiscord Rich Presenceに表示する小さなPython CLIです。
 
-## 概要
+基本表示は、事前に決めた方針どおり **repo + phase + timer** に絞っています。GitHub remote から安全にURLを作れる場合だけ、DiscordのRich Presenceボタンとして `リポジトリを見る` を出します。
 
-このリポジトリは私が常用しているドキュメント駆動開発 *(Documentation Driven Development)* のテンプレートです。
+```text
+Codex
+codex-discord-rpc で作業中
+編集中
+経過時間
 
-開発サイクルはドキュメントと [TODO.md](TODO.md) によって構成されています。
+[リポジトリを見る]
+```
 
-このテンプレートは `intent` を品質保証の一次資料として扱います。中規模以上、またはリスクのある変更では `_docs/qa/` に QA test-plan と verification を残し、テストを intent-derived invariant と acceptance criteria に紐づけます。`_docs/qa/` はテストコードの置き場ではなく、計画・対応表・検証証跡の置き場です。
+ファイル名、branch名、プロンプト本文、コマンド内容は表示しません。
 
-人がサイクルを回すことも出来ますが、基本的には**Claude Codeなどのコーディングエージェント**が、この規則に従って自律的な開発を行うために設計されました。
+## セットアップ
 
-**詳細については [ガイドライン](_docs/documentation_guide.md) を参照してください。**
+```bash
+uv sync --extra dev
+uv run codex-discord-rpc init
+```
 
-初めて使う場合は、まず [Quickstart](QUICKSTART.md) を読んでください。
+作成された設定ファイルを開き、Discord Developer Portalで作成したアプリケーションの client ID を設定します。
 
-## 使用方法
+```toml
+client_id = "YOUR_DISCORD_APPLICATION_CLIENT_ID"
+language = "ja"
+show_repository_button = true
+show_timer = true
+```
 
-1. このリポジトリをフォークまたはクローンします。
-2. プロジェクトに合わせてドキュメントと設定ファイルを編集します。
-3. 開発を開始します。
+## 使い方
 
-配布用 ZIP を作る場合は、`.git` / `.jj` などの VCS メタデータを含めないために、GitHub 標準アーカイブまたは `scripts/create-template-archive.sh` を使用してください。
+現在のrepoでpayloadだけ確認する場合:
 
-ローカルでドキュメント検証をまとめて実行する場合は、`scripts/check-docs.sh` を使います。
+```bash
+uv run codex-discord-rpc render --repo .
+```
 
-既存プロジェクトへ後付け導入する場合は、`DD_SCOPE_BASE` に導入時点の commit を設定して「導入以降に追加した docs だけ」を検証対象に絞れます。設定方法は [Quickstart](QUICKSTART.md) と [documentation_operations.md](_docs/standards/documentation_operations.md) を参照してください。
+Discord DesktopへRich Presenceを送る場合:
 
-root 直下の Markdown は agent 向けの active guidance として扱われます。一回限りの実装プロンプトを履歴として残す場合は `_evals/prompts/` などへ移し、非運用文書であることを明記してください。
+```bash
+uv run codex-discord-rpc run --repo .
+```
 
-### カスタマイズ
+作業フェーズを更新する場合:
 
-使用に当たっては、以下のファイルをプロジェクトに合わせてカスタマイズしてください。
+```bash
+uv run codex-discord-rpc set-phase running_tests
+```
 
-#### AGENTS.md
+対応フェーズ:
 
-変更の推奨事項はありませんが、特定コマンドの使用指示が含まれているので、必要に応じて編集してください。
+```text
+idle              待機中
+reading_context   文脈を確認中
+editing           編集中
+running_commands  コマンド実行中
+running_tests     テスト実行中
+reviewing_changes 変更を確認中
+waiting_for_input 入力待ち
+```
 
-#### README.md
+英語表示に切り替える場合:
 
-このREADME自体も、プロジェクトに合わせて編集してください。
+```toml
+language = "en"
+```
 
-#### LICENSE.txt
+## 設定
 
-[LICENSE](LICENSE.txt)についても、特に著作者の表示を編集してください。
+デフォルトの設定ファイルは `~/.config/codex-discord-rpc/config.toml` です。
+
+```toml
+enabled = true
+language = "ja"
+client_id = ""
+show_repository_button = true
+show_timer = true
+repo_path = "."
+phase = "editing"
+refresh_interval_seconds = 15
+state_file = ""
+```
+
+`state_file` を空にすると、`~/.local/state/codex-discord-rpc/state.json` が使われます。
+
+## 開発
+
+```bash
+uv sync --extra dev
+uv run pytest
+uv run ruff check .
+./scripts/check-docs.sh
+```
 
 ## ライセンス
 
-このリポジトリは [MITライセンス](LICENSE.txt) の下でライセンスされています。
-
----
-
-## Summary
-
-This repository is a template for Documentation Driven Development that I commonly use.
-
-The development cycle is structured around documentation and [TODO.md](TODO.md).
-
-This template treats `intent` documents as primary QA inputs. Medium-sized or risky changes keep a QA test plan and verification record under `_docs/qa/`, and tests should map back to intent-derived invariants and acceptance criteria. `_docs/qa/` is for plans, traceability, and evidence; test code belongs in the codebase's normal test locations.
-
-While humans can run the cycle, it is primarily designed **for coding agents like Claude Code** to autonomously develop according to these rules.
-
-**For more details, please refer to the [Guidelines](_docs/documentation_guide.md).**
-
-If this is your first time using the template, start with the [Quickstart](QUICKSTART.md).
-
-## Usage
-
-1. Fork or clone this repository.
-2. Edit the documentation and configuration files to suit your project.
-3. Start development.
-
-When creating a distribution ZIP, use GitHub's standard archive or `scripts/create-template-archive.sh` so VCS metadata such as `.git` / `.jj` is not included.
-
-Use `scripts/check-docs.sh` to run the local documentation validators together.
-
-When adopting this template in an existing project, set `DD_SCOPE_BASE` to the adoption commit so that only docs added after adoption are validated. See the [Quickstart](QUICKSTART.md) and [documentation_operations.md](_docs/standards/documentation_operations.md) for setup.
-
-Root-level Markdown is treated as active guidance for agents. If you keep a one-off implementation prompt for history, move it under `_evals/prompts/` or another historical location and mark it as non-operational.
-
-### Customization
-
-When using this template, please customize the following files to fit your project.
-
-#### AGENTS.md
-
-No specific changes are recommended here, but feel free to edit it as needed, especially if you want to suggest the use of certain commands.
-
-#### README.md
-
-Feel free to edit this README itself to suit your project.
-
-#### LICENSE.txt
-
-Please edit the [LICENSE](LICENSE.txt) file, particularly the author attribution.
-
-## License
-This repository is licensed under the [MIT License](LICENSE.txt).
+このリポジトリは [MIT License](LICENSE.txt) の下でライセンスされています。
