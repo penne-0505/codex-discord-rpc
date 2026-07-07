@@ -96,6 +96,7 @@ show_repository_button = true
 show_timer = true
 large_image_key = ""
 auto_detect_projects = true
+active_project_ttl_minutes = 20
 repo_path = "."
 phase = "editing"
 refresh_interval_seconds = 15
@@ -113,6 +114,8 @@ When `state_file` is empty, the default state file is:
 ```
 
 `auto_detect_projects` enables Linux `/proc` based Codex Desktop project detection. It looks for Codex Desktop `node_repl` helper processes and uses their working directories as project candidates.
+
+`active_project_ttl_minutes` filters detected projects by Codex Desktop thread recency from `~/.codex/state_5.sqlite`. The default is 20 minutes. Set it to `0` to keep every live `node_repl` project candidate.
 
 ## Usage
 
@@ -134,7 +137,7 @@ Monitor Codex Desktop projects automatically:
 uv run codex-discord-rpc monitor
 ```
 
-`monitor` writes concise status changes to stderr, including whether projects were detected, whether multiple projects were aggregated, and when Rich Presence is updated or cleared. When run under systemd, these messages are available in the user journal.
+`monitor` writes concise status changes to stderr, including whether projects were detected, whether stale candidates were ignored, whether multiple projects were aggregated, and when Rich Presence is updated or cleared. When run under systemd, these messages are available in the user journal.
 
 When one Codex project is detected, the project name is displayed. When multiple distinct projects are detected, the presence uses an aggregate display and omits repository buttons:
 

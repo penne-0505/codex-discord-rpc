@@ -16,6 +16,7 @@ show_repository_button = true
 show_timer = true
 large_image_key = ""
 auto_detect_projects = true
+active_project_ttl_minutes = 20
 repo_path = "."
 phase = "editing"
 refresh_interval_seconds = 15
@@ -32,6 +33,7 @@ class Config:
     show_timer: bool = True
     large_image_key: str = ""
     auto_detect_projects: bool = True
+    active_project_ttl_minutes: int = 20
     repo_path: str = "."
     phase: str = "editing"
     refresh_interval_seconds: int = 15
@@ -47,6 +49,10 @@ class Config:
         if interval < 5:
             raise ValueError("refresh_interval_seconds must be 5 or greater")
 
+        ttl_minutes = int(values.get("active_project_ttl_minutes", 20))
+        if ttl_minutes < 0:
+            raise ValueError("active_project_ttl_minutes must be 0 or greater")
+
         return cls(
             enabled=bool(values.get("enabled", True)),
             language=language,
@@ -55,6 +61,7 @@ class Config:
             show_timer=bool(values.get("show_timer", True)),
             large_image_key=str(values.get("large_image_key", "")).strip(),
             auto_detect_projects=bool(values.get("auto_detect_projects", True)),
+            active_project_ttl_minutes=ttl_minutes,
             repo_path=str(values.get("repo_path", ".")),
             phase=normalize_phase(str(values.get("phase", "editing"))),
             refresh_interval_seconds=interval,

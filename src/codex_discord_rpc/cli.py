@@ -10,7 +10,11 @@ from .config import Config, default_config_path, load_config, write_default_conf
 from .git_info import get_repository_info
 from .phases import phase_table
 from .presence import build_multi_project_payload, build_payload, render_payload
-from .project_detection import distinct_projects, iter_node_repl_candidates
+from .project_detection import (
+    distinct_projects,
+    filter_recent_projects,
+    iter_node_repl_candidates,
+)
 from .state import default_state_path, load_state, write_repo_path, write_state
 
 
@@ -135,21 +139,26 @@ def _monitor_payload(config: Config, started_at: int):
         )
 
     if config.auto_detect_projects:
-        projects = distinct_projects(iter_node_repl_candidates())
+        candidates, stale_count = filter_recent_projects(
+            iter_node_repl_candidates(),
+            config.active_project_ttl_minutes,
+        )
+        projects = distinct_projects(candidates)
+        stale_status = f":stale={stale_count}" if stale_count else ""
         if len(projects) == 1:
             repository = get_repository_info(projects[0].identity)
             return (
                 build_payload(config, repository, runtime_state.phase, projects[0].started_at),
-                f"detected-project:{repository.root}",
+                f"detected-project:{repository.root}{stale_status}",
             )
         if len(projects) > 1:
             roots = ", ".join(str(project.identity) for project in projects[:5])
             suffix = "" if len(projects) <= 5 else f", +{len(projects) - 5} more"
             return (
                 build_multi_project_payload(config, len(projects), started_at),
-                f"detected-multiple:{len(projects)}:{roots}{suffix}",
+                f"detected-multiple:{len(projects)}:{roots}{suffix}{stale_status}",
             )
-        return None, "no-projects"
+        return None, f"no-projects{stale_status}"
 
     repository = get_repository_info(config.repo_path)
     return (
@@ -159,17 +168,19 @@ def _monitor_payload(config: Config, started_at: int):
 
 
 def _log_monitor_status(status_key: str) -> None:
-    if status_key == "no-projects":
-        _log("no Codex projects detected")
+    status, _, stale_part = status_key.partition(":stale=")
+    stale_suffix = f"; ignored stale projects={stale_part}" if stale_part else ""
+    if status == "no-projects":
+        _log(f"no Codex projects detected{stale_suffix}")
     elif status_key.startswith("detected-project:"):
-        _log(f"detected Codex project {status_key.removeprefix('detected-project:')}")
-    elif status_key.startswith("detected-multiple:"):
-        _, count, roots = status_key.split(":", 2)
-        _log(f"detected {count} Codex projects: {roots}")
-    elif status_key.startswith("state-project:"):
-        _log(f"using explicit state project {status_key.removeprefix('state-project:')}")
-    elif status_key.startswith("config-project:"):
-        _log(f"using configured fallback project {status_key.removeprefix('config-project:')}")
+        _log(f"detected Codex project {status.removeprefix('detected-project:')}{stale_suffix}")
+    elif status.startswith("detected-multiple:"):
+        _, count, roots = status.split(":", 2)
+        _log(f"detected {count} Codex projects: {roots}{stale_suffix}")
+    elif status.startswith("state-project:"):
+        _log(f"using explicit state project {status.removeprefix('state-project:')}")
+    elif status.startswith("config-project:"):
+        _log(f"using configured fallback project {status.removeprefix('config-project:')}")
 
 
 def cmd_monitor(args: argparse.Namespace) -> int:
@@ -178,6 +189,7 @@ def cmd_monitor(args: argparse.Namespace) -> int:
     _log(
         "monitor started "
         f"auto_detect_projects={config.auto_detect_projects} "
+        f"active_project_ttl_minutes={config.active_project_ttl_minutes} "
         f"interval={config.refresh_interval_seconds}s"
     )
     _, initial_status = _monitor_payload(config, started_at)

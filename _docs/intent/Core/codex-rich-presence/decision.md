@@ -27,6 +27,7 @@ Codex作業中の状態をDiscordに表示したいが、プロンプト本文�
 - 実行環境でDiscord Desktopへ接続できなくても検証できるよう、payloadをJSONとして出す `render` コマンドを提供する。
 - Codex内部hookには依存せず、state fileと `set-phase` コマンドで外部からフェーズ更新できる形にする。
 - LinuxではCodex Desktop配下の `node_repl` process cwdをbest-effort project候補として検出する `monitor` コマンドを提供する。
+- `monitor` はCodex Desktopの `~/.codex/state_5.sqlite` からproject recencyを読める場合、既定20分より古い候補を表示対象から外す。
 - 複数のdistinct projectが検出された場合、単一projectを推定せず「N個のCodexプロジェクトで作業中」と集約表示し、repository buttonは出さない。
 - `monitor` は検出状態の変化、Presence更新、clearをstderrへ簡潔に出力する。
 
@@ -47,6 +48,7 @@ Rich Presenceは見た人に「今何をしているか」を伝えるための�
 - `client_id` はユーザー設定に置く必要がある。
 - GitHub以外のremoteではボタンは表示されない。
 - `monitor` の自動検出はLinux `/proc` とCodex Desktopの現在のprocess modelに依存する。
+- Codex state DBが読めない場合、project recency filteringは行わず `/proc` 候補を使う。
 
 ## Quality Implications
 
@@ -56,6 +58,7 @@ Rich Presenceは見た人に「今何をしているか」を伝えるための�
 - Discord接続なしで主要ロジックをテストできる状態を維持する。
 - 複数project時はproject数だけを表示し、特定repoへのリンクを出さない。
 - monitorログは常駐運用でjournalを汚しすぎないよう、状態変化時だけ出す。
+- recency filteringではcwdとtimestampだけを読み、thread titleやcommand lineを表示に使わない。
 
 ## Intent-derived Invariants
 
@@ -68,6 +71,7 @@ Rich Presenceは見た人に「今何をしているか」を伝えるための�
 - INV-007: large image keyは明示設定された場合だけDiscord payloadに含まれる。
 - INV-008: `monitor` は検出状態が変わった時に、候補なし・単一project・複数project・clear/updateをstderrへ出力する。
 - INV-009: Discord RPC payloadのactivity nameは `Codex (Desktop)` である。
+- INV-010: `monitor` はCodex state DBからrecencyを読める候補について、`active_project_ttl_minutes` より古いprojectを表示対象から外す。
 
 ## Enforced in (optional)
 
@@ -80,6 +84,7 @@ Rich Presenceは見た人に「今何をしているか」を伝えるための�
 - INV-007: `src/codex_discord_rpc/config.py`, `src/codex_discord_rpc/presence.py`, `tests/test_presence.py`
 - INV-008: `src/codex_discord_rpc/cli.py`, `tests/test_cli.py`
 - INV-009: `src/codex_discord_rpc/presence.py`, `tests/test_presence.py`
+- INV-010: `src/codex_discord_rpc/project_detection.py`, `src/codex_discord_rpc/cli.py`, `tests/test_project_detection.py`
 
 ## Rollback / Follow-ups
 
