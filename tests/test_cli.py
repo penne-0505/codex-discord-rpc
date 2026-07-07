@@ -127,3 +127,35 @@ def test_monitor_logs_detection_before_client_id_validation(
     assert "monitor started" in stderr
     assert f"detected Codex project {project}" in stderr
     assert "client_id is required" in stderr
+
+
+def test_monitor_once_uses_idle_payload_when_desktop_is_running(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    module = types.ModuleType("pypresence")
+    module.Presence = FakePresence
+    monkeypatch.setitem(sys.modules, "pypresence", module)
+    FakePresence.instances.clear()
+    monkeypatch.setattr("codex_discord_rpc.cli.iter_node_repl_candidates", lambda: [])
+    monkeypatch.setattr("codex_discord_rpc.cli.is_codex_desktop_running", lambda: True)
+
+    result = main(
+        [
+            "--config",
+            str(tmp_path / "missing-config.toml"),
+            "monitor",
+            "--client-id",
+            "123",
+            "--once",
+        ]
+    )
+
+    assert result == 0
+    instance = FakePresence.instances[0]
+    assert instance.updates[0]["details"] == "Codex Desktopを起動中"
+    assert instance.updates[0]["state"] == "待機中"
+    assert "buttons" not in instance.updates[0]
+    stderr = capsys.readouterr().err
+    assert "Codex Desktop is running without an active project" in stderr

@@ -18,7 +18,7 @@ related_prs: []
 
 ## Summary
 
-Python / uv CLI、payload生成、activity name、GitHub URL正規化、日本語表示、large image key設定、fake RPCによるRich Presence更新経路、Linux `node_repl` cwd project検出、Codex state DB recencyによる古いproject候補の除外、複数project aggregate表示、monitor状態変化ログ、invalid client ID時の安全な失敗、docs validatorを確認した。
+Python / uv CLI、payload生成、activity name、GitHub URL正規化、日本語表示、large image key設定、fake RPCによるRich Presence更新経路、Linux `node_repl` cwd project検出、Codex state DB recencyによる古いproject候補の除外、Codex Desktop起動中の待機中表示、複数project aggregate表示、monitor状態変化ログ、invalid client ID時の安全な失敗、docs validatorを確認した。
 
 ## Verification Verdict
 
@@ -49,7 +49,7 @@ Result:
 
 ```text
 uv sync --extra dev: installed package and dev dependencies successfully.
-uv run pytest: 17 passed.
+uv run pytest: 20 passed.
 uv run ruff check .: All checks passed.
 codex-discord-rpc --help: command help displayed.
 codex-discord-rpc monitor --help: monitor help displayed.
@@ -67,7 +67,7 @@ project_detection smoke: detected live Codex node_repl project identities withou
 | Command / Test | Result | Notes |
 | --- | --- | --- |
 | `uv sync --extra dev` | PASS | Package builds and installs with uv. |
-| `uv run pytest` | PASS | 17 tests passed. |
+| `uv run pytest` | PASS | 20 tests passed. |
 | `uv run ruff check .` | PASS | No lint errors. |
 | `uv run codex-discord-rpc --help` | PASS | CLI entrypoint works. |
 | `uv run codex-discord-rpc monitor --help` | PASS | monitor command is exposed. |
@@ -86,6 +86,7 @@ project_detection smoke: detected live Codex node_repl project identities withou
 | README explains project-specific usage. | PASS | Template overview was replaced with Codex Discord RPC usage. |
 | README explains monitor and systemd user service usage. | PASS | monitor and user service examples are documented. |
 | README explains active project TTL. | PASS | `active_project_ttl_minutes = 20` and `0` disable behavior are documented. |
+| README explains idle display. | PASS | Codex Desktop open without a recent project is documented as `待機中`. |
 | Quickstart explains CLI startup, render, run, and phase update. | PASS | Template adoption text was removed from the active quickstart. |
 | AGENTS includes project commands and display boundaries. | PASS | Secret/privacy display restrictions are explicit. |
 | TODO has no completed template tasks left. | PASS | Backlog, Ready, and In Progress are empty. |
@@ -105,6 +106,7 @@ project_detection smoke: detected live Codex node_repl project identities withou
 | AC-009 | PASS | `tests/test_cli.py` verifies monitor stderr includes startup, detection, update logs, and pre-client-ID detection logs. |
 | AC-010 | PASS | `tests/test_presence.py` verifies single-project and multi-project payloads include `name = "Codex (Desktop)"`. |
 | AC-011 | PASS | `tests/test_project_detection.py` verifies Codex state DB recency filtering drops known stale candidates while retaining candidates without recency records. |
+| AC-012 | PASS | `tests/test_cli.py` verifies fake RPC monitor sends `待機中` when Codex Desktop is running without an active project. |
 
 ## Invariant Coverage
 
@@ -120,6 +122,7 @@ project_detection smoke: detected live Codex node_repl project identities withou
 | INV-008 | PASS | `tests/test_cli.py` asserts monitor status logs for the multi-project path and missing-client-ID path. |
 | INV-009 | PASS | `tests/test_presence.py` asserts activity name in generated payloads. |
 | INV-010 | PASS | `tests/test_project_detection.py` covers `latest_codex_project_recency_ms` and `filter_recent_projects`. |
+| INV-011 | PASS | `tests/test_project_detection.py` verifies Electron-only running detection, and `tests/test_cli.py` verifies idle payload output. |
 
 ## Deferred / Not Covered
 

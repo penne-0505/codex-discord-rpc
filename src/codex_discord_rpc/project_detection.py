@@ -9,6 +9,7 @@ import time
 
 
 NODE_REPL_EXE_SUFFIX = "/opt/codex-desktop/resources/node_repl"
+CODEX_DESKTOP_ELECTRON_EXE = "/opt/codex-desktop/electron"
 CODEX_STATE_DB = Path.home() / ".codex" / "state_5.sqlite"
 
 
@@ -103,6 +104,16 @@ def iter_node_repl_candidates(proc_root: Path = Path("/proc")) -> list[ProjectCa
             )
         )
     return candidates
+
+
+def is_codex_desktop_running(proc_root: Path = Path("/proc")) -> bool:
+    for proc_dir in proc_root.iterdir():
+        if not proc_dir.name.isdigit():
+            continue
+        exe = _read_link(proc_dir / "exe")
+        if exe == CODEX_DESKTOP_ELECTRON_EXE:
+            return True
+    return False
 
 
 def distinct_projects(candidates: list[ProjectCandidate]) -> list[ProjectCandidate]:

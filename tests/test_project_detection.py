@@ -9,6 +9,7 @@ from codex_discord_rpc.project_detection import (
     distinct_projects,
     filter_recent_projects,
     iter_node_repl_candidates,
+    is_codex_desktop_running,
     is_project_cwd,
     latest_codex_project_recency_ms,
     ProjectCandidate,
@@ -55,6 +56,20 @@ def test_distinct_projects_collapses_same_identity(tmp_path: Path) -> None:
 
 def test_is_project_cwd_rejects_codex_desktop_internal_path() -> None:
     assert is_project_cwd(Path("/opt/codex-desktop")) is False
+
+
+def test_is_codex_desktop_running_uses_electron_process_only(tmp_path: Path) -> None:
+    proc_root = tmp_path / "proc"
+    proc_root.mkdir()
+    project = tmp_path / "project"
+    project.mkdir()
+    _proc_entry(proc_root, 100, project, "/opt/codex-desktop/resources/node_repl")
+
+    assert is_codex_desktop_running(proc_root) is False
+
+    _proc_entry(proc_root, 101, Path("/opt/codex-desktop"), "/opt/codex-desktop/electron")
+
+    assert is_codex_desktop_running(proc_root) is True
 
 
 def _codex_state_db(path: Path) -> None:

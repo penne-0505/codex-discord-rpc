@@ -26,6 +26,7 @@ related_prs: []
 Discordへ出す情報をrepo名、作業フェーズ、timerに絞り、GitHub URLボタンは安全に正規化できる場合だけ生成されることを確認する。
 `monitor` ではCodex Desktopの `node_repl` cwdをproject候補として扱い、複数project時に誤った単一repoを表示しないことを確認する。
 Codex state DBからrecencyを読める場合、古いproject候補を既定20分TTLで表示対象から外すことを確認する。
+project候補がなくてもCodex Desktop Electron本体が起動中なら待機中表示へ切り替わることを確認する。
 
 ## Acceptance Criteria
 
@@ -40,6 +41,7 @@ Codex state DBからrecencyを読める場合、古いproject候補を既定20�
 - AC-009: `monitor` がproject検出・Presence更新・clearの状態変化をstderrへ出力する。
 - AC-010: Discord RPC payloadのactivity nameが `Codex (Desktop)` である。
 - AC-011: `monitor` がCodex state DB recencyに基づいて古いproject候補を除外できる。
+- AC-012: `monitor` がCodex Desktop起動中かつactive projectなしの状態を待機中として表示できる。
 
 ## Intent-derived Invariants
 
@@ -53,6 +55,7 @@ Codex state DBからrecencyを読める場合、古いproject候補を既定20�
 - INV-008: `monitor` は検出状態が変わった時に、候補なし・単一project・複数project・clear/updateをstderrへ出力する。
 - INV-009: Discord RPC payloadのactivity nameは `Codex (Desktop)` である。
 - INV-010: `monitor` はCodex state DBからrecencyを読める候補について、`active_project_ttl_minutes` より古いprojectを表示対象から外す。
+- INV-011: `monitor` はCodex Desktop Electron本体が起動中かつactive projectがない場合に待機中payloadを出し、`node_repl` 単独では待機中にしない。
 
 ## Risk Assessment
 
@@ -72,6 +75,8 @@ Codex state DBからrecencyを読める場合、古いproject候補を既定20�
 - Unit: fake RPCの `monitor --once` で検出ログがstderrに出ることをpytestで確認する。
 - Unit: fake `/proc` による `node_repl` cwd検出とdistinct project集約をpytestで確認する。
 - Unit: fake Codex state DBでrecencyを持つproject候補だけTTL判定されることをpytestで確認する。
+- Unit: fake `/proc` でElectron本体だけをCodex Desktop起動判定に使うことをpytestで確認する。
+- Unit: fake RPCの `monitor --once` で待機中payloadが送られることをpytestで確認する。
 - Integration: `uv run codex-discord-rpc render --repo .` を実行する。
 - E2E: Discord Desktop接続はローカル環境依存のため、client ID未設定時の安全な失敗のみ確認する。
 - Manual QA: README/Quickstart/AGENTS/TODOの内容を確認する。
@@ -93,6 +98,7 @@ Codex state DBからrecencyを読める場合、古いproject候補を既定20�
 | AC-009 | TODO | monitorが状態変化ログを出す | unit | `uv run pytest` | stderrに `monitor started` / detected / updated | planned |
 | AC-010 | TODO | activity nameが `Codex (Desktop)` である | unit | `uv run pytest` | payload `name` assertion | planned |
 | AC-011 | TODO | 古いCodex project候補をTTLで除外する | unit | `uv run pytest` | fake state DBで古い候補だけ除外される | planned |
+| AC-012 | TODO | Desktop起動中かつactive projectなしでは待機中表示する | unit | `uv run pytest` | fake RPC monitorで `待機中` payload | planned |
 | INV-001 | intent | payloadに作業詳細を含めない | unit/review | `tests/test_presence.py`, diff review | details/state/start/buttonsのみ | planned |
 | INV-002 | intent | GitHub remoteだけボタン化する | unit | `tests/test_git_info.py` | non-GitHub remoteはNone | planned |
 | INV-003 | intent | 日本語デフォルト、英語は明示時のみ | unit | `tests/test_presence.py` | ja/enの期待値が通る | planned |
@@ -103,6 +109,7 @@ Codex state DBからrecencyを読める場合、古いproject候補を既定20�
 | INV-008 | intent | monitor状態変化をstderrへ出力する | unit | `tests/test_cli.py` | fake RPC monitorでstderr assertions | planned |
 | INV-009 | intent | activity nameが `Codex (Desktop)` である | unit | `tests/test_presence.py` | single/multi payloadで `name` assertion | planned |
 | INV-010 | intent | state DB recencyで古い候補を除外する | unit | `tests/test_project_detection.py` | TTL超過候補だけ表示対象から外れる | planned |
+| INV-011 | intent | Electron本体起動中のみ待機中表示する | unit | `tests/test_project_detection.py`, `tests/test_cli.py` | `node_repl` 単独はFalse、Electronありは待機中payload | planned |
 
 ## Manual QA Checklist
 
@@ -120,6 +127,7 @@ Codex state DBからrecencyを読める場合、古いproject候補を既定20�
 - [ ] monitorはcmdline全文を読まない。
 - [ ] large image keyが空の既存設定でpayloadが変わりすぎない。
 - [ ] active project TTLが既定20分で、`0` なら無効化される。
+- [ ] active projectなしでCodex Desktop本体が起動中なら待機中になる。
 - [ ] monitorログがcmdline全文やsecretを出さない。
 
 ## High-risk Checklist

@@ -137,7 +137,7 @@ Monitor Codex Desktop projects automatically:
 uv run codex-discord-rpc monitor
 ```
 
-`monitor` writes concise status changes to stderr, including whether projects were detected, whether stale candidates were ignored, whether multiple projects were aggregated, and when Rich Presence is updated or cleared. When run under systemd, these messages are available in the user journal.
+`monitor` writes concise status changes to stderr, including whether projects were detected, whether stale candidates were ignored, whether multiple projects were aggregated, when Codex Desktop is open without an active project, and when Rich Presence is updated or cleared. When run under systemd, these messages are available in the user journal.
 
 When one Codex project is detected, the project name is displayed. When multiple distinct projects are detected, the presence uses an aggregate display and omits repository buttons:
 
@@ -145,6 +145,15 @@ When one Codex project is detected, the project name is displayed. When multiple
 Codex (Desktop)
 3個のCodexプロジェクトで作業中
 複数プロジェクト
+elapsed time
+```
+
+When Codex Desktop is open but no recent project is detected, the presence switches to an idle display:
+
+```text
+Codex (Desktop)
+Codex Desktopを起動中
+待機中
 elapsed time
 ```
 

@@ -29,6 +29,7 @@ Codex作業中の状態をDiscordに表示したいが、プロンプト本文�
 - LinuxではCodex Desktop配下の `node_repl` process cwdをbest-effort project候補として検出する `monitor` コマンドを提供する。
 - `monitor` はCodex Desktopの `~/.codex/state_5.sqlite` からproject recencyを読める場合、既定20分より古い候補を表示対象から外す。
 - 複数のdistinct projectが検出された場合、単一projectを推定せず「N個のCodexプロジェクトで作業中」と集約表示し、repository buttonは出さない。
+- project候補がなくてもCodex DesktopのElectron本体が起動中なら、「待機中」と表示する。
 - `monitor` は検出状態の変化、Presence更新、clearをstderrへ簡潔に出力する。
 
 ## Alternatives
@@ -49,6 +50,7 @@ Rich Presenceは見た人に「今何をしているか」を伝えるための�
 - GitHub以外のremoteではボタンは表示されない。
 - `monitor` の自動検出はLinux `/proc` とCodex Desktopの現在のprocess modelに依存する。
 - Codex state DBが読めない場合、project recency filteringは行わず `/proc` 候補を使う。
+- 待機中判定はCodex Desktop Electron本体のprocessだけを使い、残存 `node_repl` processだけでは待機中にしない。
 
 ## Quality Implications
 
@@ -59,6 +61,7 @@ Rich Presenceは見た人に「今何をしているか」を伝えるための�
 - 複数project時はproject数だけを表示し、特定repoへのリンクを出さない。
 - monitorログは常駐運用でjournalを汚しすぎないよう、状態変化時だけ出す。
 - recency filteringではcwdとtimestampだけを読み、thread titleやcommand lineを表示に使わない。
+- 待機中表示ではrepository buttonを出さない。
 
 ## Intent-derived Invariants
 
@@ -72,6 +75,7 @@ Rich Presenceは見た人に「今何をしているか」を伝えるための�
 - INV-008: `monitor` は検出状態が変わった時に、候補なし・単一project・複数project・clear/updateをstderrへ出力する。
 - INV-009: Discord RPC payloadのactivity nameは `Codex (Desktop)` である。
 - INV-010: `monitor` はCodex state DBからrecencyを読める候補について、`active_project_ttl_minutes` より古いprojectを表示対象から外す。
+- INV-011: `monitor` はCodex Desktop Electron本体が起動中かつactive projectがない場合に待機中payloadを出し、`node_repl` 単独では待機中にしない。
 
 ## Enforced in (optional)
 
@@ -85,6 +89,7 @@ Rich Presenceは見た人に「今何をしているか」を伝えるための�
 - INV-008: `src/codex_discord_rpc/cli.py`, `tests/test_cli.py`
 - INV-009: `src/codex_discord_rpc/presence.py`, `tests/test_presence.py`
 - INV-010: `src/codex_discord_rpc/project_detection.py`, `src/codex_discord_rpc/cli.py`, `tests/test_project_detection.py`
+- INV-011: `src/codex_discord_rpc/project_detection.py`, `src/codex_discord_rpc/presence.py`, `src/codex_discord_rpc/cli.py`, `tests/test_project_detection.py`, `tests/test_presence.py`, `tests/test_cli.py`
 
 ## Rollback / Follow-ups
 

@@ -2,7 +2,7 @@ from pathlib import Path
 
 from codex_discord_rpc.config import Config
 from codex_discord_rpc.git_info import RepositoryInfo
-from codex_discord_rpc.presence import build_multi_project_payload, build_payload
+from codex_discord_rpc.presence import build_idle_payload, build_multi_project_payload, build_payload
 
 
 def test_builds_japanese_repo_phase_timer_payload() -> None:
@@ -75,6 +75,20 @@ def test_builds_japanese_multi_project_payload_without_buttons() -> None:
     assert payload["name"] == "Codex (Desktop)"
     assert payload["details"] == "3個のCodexプロジェクトで作業中"
     assert payload["state"] == "複数プロジェクト"
+    assert payload["large_text"] == "Codex (Desktop)"
+    assert payload["start"] == 1_700_000_000
+    assert payload["large_image"] == "codex_icon"
+    assert "buttons" not in payload
+
+
+def test_builds_japanese_idle_payload_without_buttons() -> None:
+    config = Config(language="ja", show_timer=True, large_image_key="codex_icon")
+
+    payload = build_idle_payload(config, started_at=1_700_000_000).as_rpc_kwargs()
+
+    assert payload["name"] == "Codex (Desktop)"
+    assert payload["details"] == "Codex Desktopを起動中"
+    assert payload["state"] == "待機中"
     assert payload["large_text"] == "Codex (Desktop)"
     assert payload["start"] == 1_700_000_000
     assert payload["large_image"] == "codex_icon"

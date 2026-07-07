@@ -90,6 +90,20 @@ def build_multi_project_payload(
     )
 
 
+def build_idle_payload(config: Config, started_at: int | None = None) -> PresencePayload:
+    details = "Codex Desktopを起動中" if config.language == "ja" else "Codex Desktop is open"
+    state = "待機中" if config.language == "ja" else "Idle"
+    return PresencePayload(
+        name=APPLICATION_LABEL,
+        details=details,
+        state=state,
+        start=int(started_at or time.time()) if config.show_timer else None,
+        buttons=None,
+        large_text=APPLICATION_LABEL,
+        large_image=config.large_image_key or None,
+    )
+
+
 def render_payload(config: Config, repo_path: str | Path | None = None) -> PresencePayload:
     started_at = int(time.time())
     state_path = Path(config.state_file).expanduser() if config.state_file else None

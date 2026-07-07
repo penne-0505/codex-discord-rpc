@@ -9,10 +9,11 @@ import time
 from .config import Config, default_config_path, load_config, write_default_config
 from .git_info import get_repository_info
 from .phases import phase_table
-from .presence import build_multi_project_payload, build_payload, render_payload
+from .presence import build_idle_payload, build_multi_project_payload, build_payload, render_payload
 from .project_detection import (
     distinct_projects,
     filter_recent_projects,
+    is_codex_desktop_running,
     iter_node_repl_candidates,
 )
 from .state import default_state_path, load_state, write_repo_path, write_state
@@ -158,6 +159,11 @@ def _monitor_payload(config: Config, started_at: int):
                 build_multi_project_payload(config, len(projects), started_at),
                 f"detected-multiple:{len(projects)}:{roots}{suffix}{stale_status}",
             )
+        if is_codex_desktop_running():
+            return (
+                build_idle_payload(config, started_at),
+                f"idle{stale_status}",
+            )
         return None, f"no-projects{stale_status}"
 
     repository = get_repository_info(config.repo_path)
@@ -172,6 +178,8 @@ def _log_monitor_status(status_key: str) -> None:
     stale_suffix = f"; ignored stale projects={stale_part}" if stale_part else ""
     if status == "no-projects":
         _log(f"no Codex projects detected{stale_suffix}")
+    elif status == "idle":
+        _log(f"Codex Desktop is running without an active project{stale_suffix}")
     elif status_key.startswith("detected-project:"):
         _log(f"detected Codex project {status.removeprefix('detected-project:')}{stale_suffix}")
     elif status.startswith("detected-multiple:"):
