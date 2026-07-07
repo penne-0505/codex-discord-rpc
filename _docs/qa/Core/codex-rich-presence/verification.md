@@ -18,7 +18,7 @@ related_prs: []
 
 ## Summary
 
-Python / uv CLI、payload生成、GitHub URL正規化、日本語表示、fake RPCによるRich Presence更新経路、Linux `node_repl` cwd project検出、複数project aggregate表示、invalid client ID時の安全な失敗、docs validatorを確認した。
+Python / uv CLI、payload生成、GitHub URL正規化、日本語表示、large image key設定、fake RPCによるRich Presence更新経路、Linux `node_repl` cwd project検出、複数project aggregate表示、invalid client ID時の安全な失敗、docs validatorを確認した。
 
 ## Verification Verdict
 
@@ -48,7 +48,7 @@ Result:
 
 ```text
 uv sync --extra dev: installed package and dev dependencies successfully.
-uv run pytest: 13 passed.
+uv run pytest: 14 passed.
 uv run ruff check .: All checks passed.
 codex-discord-rpc --help: command help displayed.
 codex-discord-rpc monitor --help: monitor help displayed.
@@ -65,7 +65,7 @@ project_detection smoke: detected live Codex node_repl project identities withou
 | Command / Test | Result | Notes |
 | --- | --- | --- |
 | `uv sync --extra dev` | PASS | Package builds and installs with uv. |
-| `uv run pytest` | PASS | 13 tests passed. |
+| `uv run pytest` | PASS | 14 tests passed. |
 | `uv run ruff check .` | PASS | No lint errors. |
 | `uv run codex-discord-rpc --help` | PASS | CLI entrypoint works. |
 | `uv run codex-discord-rpc monitor --help` | PASS | monitor command is exposed. |
@@ -97,6 +97,7 @@ project_detection smoke: detected live Codex node_repl project identities withou
 | AC-005 | PASS | README, Quickstart, and AGENTS were reviewed after customization. |
 | AC-006 | PASS | `tests/test_project_detection.py` verifies fake `/proc` `node_repl` cwd detection. |
 | AC-007 | PASS | `tests/test_cli.py` and `tests/test_presence.py` verify aggregate multi-project payload with no buttons. |
+| AC-008 | PASS | `tests/test_presence.py` verifies `large_image` is omitted by default and included when `large_image_key` is configured. |
 
 ## Invariant Coverage
 
@@ -108,6 +109,7 @@ project_detection smoke: detected live Codex node_repl project identities withou
 | INV-004 | PASS | `render --repo .` works without Discord Desktop, and pytest covers payload generation. |
 | INV-005 | PASS | `tests/test_project_detection.py`, `tests/test_cli.py`, and `tests/test_presence.py` cover project detection and multi-project aggregate display. |
 | INV-006 | PASS | Diff review confirms `project_detection.py` reads `/proc/*/exe` and `/proc/*/cwd`, not `/proc/*/cmdline`. |
+| INV-007 | PASS | `tests/test_presence.py` covers default omission and configured `large_image` output. |
 
 ## Deferred / Not Covered
 

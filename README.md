@@ -92,6 +92,7 @@ language = "ja"
 client_id = "YOUR_DISCORD_APPLICATION_CLIENT_ID"
 show_repository_button = true
 show_timer = true
+large_image_key = ""
 auto_detect_projects = true
 repo_path = "."
 phase = "editing"
@@ -100,6 +101,8 @@ state_file = ""
 ```
 
 Set `language = "en"` to use English display labels.
+
+Set `large_image_key` to a Discord Rich Presence asset key when you want a large image in the presence card. Leave it empty to omit the image.
 
 When `state_file` is empty, the default state file is:
 

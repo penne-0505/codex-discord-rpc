@@ -14,6 +14,7 @@ language = "ja"
 client_id = ""
 show_repository_button = true
 show_timer = true
+large_image_key = ""
 auto_detect_projects = true
 repo_path = "."
 phase = "editing"
@@ -29,6 +30,7 @@ class Config:
     client_id: str = ""
     show_repository_button: bool = True
     show_timer: bool = True
+    large_image_key: str = ""
     auto_detect_projects: bool = True
     repo_path: str = "."
     phase: str = "editing"
@@ -51,6 +53,7 @@ class Config:
             client_id=str(values.get("client_id", "")).strip(),
             show_repository_button=bool(values.get("show_repository_button", True)),
             show_timer=bool(values.get("show_timer", True)),
+            large_image_key=str(values.get("large_image_key", "")).strip(),
             auto_detect_projects=bool(values.get("auto_detect_projects", True)),
             repo_path=str(values.get("repo_path", ".")),
             phase=normalize_phase(str(values.get("phase", "editing"))),

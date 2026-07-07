@@ -18,6 +18,7 @@ class PresencePayload:
     start: int | None
     buttons: list[dict[str, str]] | None
     large_text: str
+    large_image: str | None
 
     def as_rpc_kwargs(self) -> dict[str, Any]:
         payload: dict[str, Any] = {
@@ -25,6 +26,8 @@ class PresencePayload:
             "state": self.state,
             "large_text": self.large_text,
         }
+        if self.large_image:
+            payload["large_image"] = self.large_image
         if self.start is not None:
             payload["start"] = self.start
         if self.buttons:
@@ -55,6 +58,7 @@ def build_payload(
         start=int(started_at or time.time()) if config.show_timer else None,
         buttons=buttons,
         large_text="Codex",
+        large_image=config.large_image_key or None,
     )
 
 
@@ -75,6 +79,7 @@ def build_multi_project_payload(
         start=int(started_at or time.time()) if config.show_timer else None,
         buttons=None,
         large_text="Codex",
+        large_image=config.large_image_key or None,
     )
 
 

@@ -22,6 +22,7 @@ Codex作業中の状態をDiscordに表示したいが、プロンプト本文�
 - Rich Presenceの基本表示は repo + phase + timer に限定する。
 - 表示言語は日本語をデフォルトにし、設定で英語へ切り替えられるようにする。
 - GitHub remoteから `https://github.com/<owner>/<repo>` を確実に作れる場合だけ、`リポジトリを見る` ボタンを出す。
+- Discord Rich Presence asset keyを設定した場合だけ、payloadにlarge image keyを含める。
 - 実行環境でDiscord Desktopへ接続できなくても検証できるよう、payloadをJSONとして出す `render` コマンドを提供する。
 - Codex内部hookには依存せず、state fileと `set-phase` コマンドで外部からフェーズ更新できる形にする。
 - LinuxではCodex Desktop配下の `node_repl` process cwdをbest-effort project候補として検出する `monitor` コマンドを提供する。
@@ -49,6 +50,7 @@ Rich Presenceは見た人に「今何をしているか」を伝えるための�
 
 - 表示対象を限定し、将来の変更でファイル名やプロンプト本文が混入しないようにする。
 - GitHub URLの正規化は許可した形式だけを通し、不明なremoteからボタンを作らない。
+- large image keyは設定値が空でない場合だけpayloadへ渡し、空の場合は従来通り画像なしにする。
 - Discord接続なしで主要ロジックをテストできる状態を維持する。
 - 複数project時はproject数だけを表示し、特定repoへのリンクを出さない。
 
@@ -60,6 +62,7 @@ Rich Presenceは見た人に「今何をしているか」を伝えるための�
 - INV-004: Discord接続なしでpayload生成を検証できるCLIとテストが存在する。
 - INV-005: `monitor` は `node_repl` cwdからdistinct project rootを検出し、複数project時は単一repoとして表示しない。
 - INV-006: `monitor` は認証ヘッダやcmdline全文を読まず、process cwd/exe/metadataだけを使ってproject候補を判定する。
+- INV-007: large image keyは明示設定された場合だけDiscord payloadに含まれる。
 
 ## Enforced in (optional)
 
@@ -69,6 +72,7 @@ Rich Presenceは見た人に「今何をしているか」を伝えるための�
 - INV-004: `src/codex_discord_rpc/cli.py`, `tests/test_presence.py`
 - INV-005: `src/codex_discord_rpc/project_detection.py`, `src/codex_discord_rpc/cli.py`, `tests/test_project_detection.py`, `tests/test_cli.py`
 - INV-006: `src/codex_discord_rpc/project_detection.py`
+- INV-007: `src/codex_discord_rpc/config.py`, `src/codex_discord_rpc/presence.py`, `tests/test_presence.py`
 
 ## Rollback / Follow-ups
 
