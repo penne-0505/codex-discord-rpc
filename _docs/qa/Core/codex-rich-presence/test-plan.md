@@ -37,6 +37,7 @@ Discordへ出す情報をrepo名、作業フェーズ、timerに絞り、GitHub 
 - AC-007: 複数distinct projectが検出された場合、aggregate project countを表示し、repository buttonを出さない。
 - AC-008: `large_image_key` が設定された場合だけDiscord payloadに `large_image` が含まれる。
 - AC-009: `monitor` がproject検出・Presence更新・clearの状態変化をstderrへ出力する。
+- AC-010: Discord RPC payloadのactivity nameが `Codex (Desktop)` である。
 
 ## Intent-derived Invariants
 
@@ -48,6 +49,7 @@ Discordへ出す情報をrepo名、作業フェーズ、timerに絞り、GitHub 
 - INV-006: `monitor` は認証ヘッダやcmdline全文を読まず、process cwd/exe/metadataだけを使ってproject候補を判定する。
 - INV-007: large image keyは明示設定された場合だけDiscord payloadに含まれる。
 - INV-008: `monitor` は検出状態が変わった時に、候補なし・単一project・複数project・clear/updateをstderrへ出力する。
+- INV-009: Discord RPC payloadのactivity nameは `Codex (Desktop)` である。
 
 ## Risk Assessment
 
@@ -85,6 +87,7 @@ Discordへ出す情報をrepo名、作業フェーズ、timerに絞り、GitHub 
 | AC-007 | TODO | 複数project時はaggregate表示でbuttonなし | unit | `uv run pytest` | `2個のCodexプロジェクトで作業中` payload | planned |
 | AC-008 | TODO | configured large image keyをpayloadへ含める | unit | `uv run pytest` | `large_image` が設定時だけ出る | planned |
 | AC-009 | TODO | monitorが状態変化ログを出す | unit | `uv run pytest` | stderrに `monitor started` / detected / updated | planned |
+| AC-010 | TODO | activity nameが `Codex (Desktop)` である | unit | `uv run pytest` | payload `name` assertion | planned |
 | INV-001 | intent | payloadに作業詳細を含めない | unit/review | `tests/test_presence.py`, diff review | details/state/start/buttonsのみ | planned |
 | INV-002 | intent | GitHub remoteだけボタン化する | unit | `tests/test_git_info.py` | non-GitHub remoteはNone | planned |
 | INV-003 | intent | 日本語デフォルト、英語は明示時のみ | unit | `tests/test_presence.py` | ja/enの期待値が通る | planned |
@@ -93,6 +96,7 @@ Discordへ出す情報をrepo名、作業フェーズ、timerに絞り、GitHub 
 | INV-006 | intent | cmdline全文を読まずcwd/exe metadataだけを使う | diff review | `src/codex_discord_rpc/project_detection.py` | `/proc/*/cmdline` を読まない | planned |
 | INV-007 | intent | large image keyは明示設定時だけpayloadに含める | unit | `tests/test_presence.py` | 空設定では省略、設定ありでは `large_image` | planned |
 | INV-008 | intent | monitor状態変化をstderrへ出力する | unit | `tests/test_cli.py` | fake RPC monitorでstderr assertions | planned |
+| INV-009 | intent | activity nameが `Codex (Desktop)` である | unit | `tests/test_presence.py` | single/multi payloadで `name` assertion | planned |
 
 ## Manual QA Checklist
 

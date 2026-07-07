@@ -11,8 +11,12 @@ from .phases import phase_label
 from .state import load_state
 
 
+APPLICATION_LABEL = "Codex (Desktop)"
+
+
 @dataclass(frozen=True)
 class PresencePayload:
+    name: str
     details: str
     state: str
     start: int | None
@@ -22,6 +26,7 @@ class PresencePayload:
 
     def as_rpc_kwargs(self) -> dict[str, Any]:
         payload: dict[str, Any] = {
+            "name": self.name,
             "details": self.details,
             "state": self.state,
             "large_text": self.large_text,
@@ -53,11 +58,12 @@ def build_payload(
         else None
     )
     return PresencePayload(
+        name=APPLICATION_LABEL,
         details=details,
         state=phase_label(phase, config.language),
         start=int(started_at or time.time()) if config.show_timer else None,
         buttons=buttons,
-        large_text="Codex",
+        large_text=APPLICATION_LABEL,
         large_image=config.large_image_key or None,
     )
 
@@ -74,11 +80,12 @@ def build_multi_project_payload(
     )
     state = "複数プロジェクト" if config.language == "ja" else "Multiple projects"
     return PresencePayload(
+        name=APPLICATION_LABEL,
         details=details,
         state=state,
         start=int(started_at or time.time()) if config.show_timer else None,
         buttons=None,
-        large_text="Codex",
+        large_text=APPLICATION_LABEL,
         large_image=config.large_image_key or None,
     )
 

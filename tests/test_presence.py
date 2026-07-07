@@ -15,8 +15,10 @@ def test_builds_japanese_repo_phase_timer_payload() -> None:
 
     payload = build_payload(config, repo, "editing", started_at=1_700_000_000).as_rpc_kwargs()
 
+    assert payload["name"] == "Codex (Desktop)"
     assert payload["details"] == "codex-discord-rpc で作業中"
     assert payload["state"] == "編集中"
+    assert payload["large_text"] == "Codex (Desktop)"
     assert payload["start"] == 1_700_000_000
     assert payload["buttons"] == [
         {
@@ -70,8 +72,10 @@ def test_builds_japanese_multi_project_payload_without_buttons() -> None:
 
     payload = build_multi_project_payload(config, 3, started_at=1_700_000_000).as_rpc_kwargs()
 
+    assert payload["name"] == "Codex (Desktop)"
     assert payload["details"] == "3個のCodexプロジェクトで作業中"
     assert payload["state"] == "複数プロジェクト"
+    assert payload["large_text"] == "Codex (Desktop)"
     assert payload["start"] == 1_700_000_000
     assert payload["large_image"] == "codex_icon"
     assert "buttons" not in payload

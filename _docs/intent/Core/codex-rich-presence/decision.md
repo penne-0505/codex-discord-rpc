@@ -20,6 +20,7 @@ Codex作業中の状態をDiscordに表示したいが、プロンプト本文�
 ## Decision
 
 - Rich Presenceの基本表示は repo + phase + timer に限定する。
+- Discordへ送るactivity nameは `Codex (Desktop)` とする。
 - 表示言語は日本語をデフォルトにし、設定で英語へ切り替えられるようにする。
 - GitHub remoteから `https://github.com/<owner>/<repo>` を確実に作れる場合だけ、`リポジトリを見る` ボタンを出す。
 - Discord Rich Presence asset keyを設定した場合だけ、payloadにlarge image keyを含める。
@@ -66,6 +67,7 @@ Rich Presenceは見た人に「今何をしているか」を伝えるための�
 - INV-006: `monitor` は認証ヘッダやcmdline全文を読まず、process cwd/exe/metadataだけを使ってproject候補を判定する。
 - INV-007: large image keyは明示設定された場合だけDiscord payloadに含まれる。
 - INV-008: `monitor` は検出状態が変わった時に、候補なし・単一project・複数project・clear/updateをstderrへ出力する。
+- INV-009: Discord RPC payloadのactivity nameは `Codex (Desktop)` である。
 
 ## Enforced in (optional)
 
@@ -77,6 +79,7 @@ Rich Presenceは見た人に「今何をしているか」を伝えるための�
 - INV-006: `src/codex_discord_rpc/project_detection.py`
 - INV-007: `src/codex_discord_rpc/config.py`, `src/codex_discord_rpc/presence.py`, `tests/test_presence.py`
 - INV-008: `src/codex_discord_rpc/cli.py`, `tests/test_cli.py`
+- INV-009: `src/codex_discord_rpc/presence.py`, `tests/test_presence.py`
 
 ## Rollback / Follow-ups
 

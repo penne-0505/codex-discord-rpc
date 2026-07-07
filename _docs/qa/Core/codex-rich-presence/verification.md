@@ -18,7 +18,7 @@ related_prs: []
 
 ## Summary
 
-Python / uv CLI、payload生成、GitHub URL正規化、日本語表示、large image key設定、fake RPCによるRich Presence更新経路、Linux `node_repl` cwd project検出、複数project aggregate表示、monitor状態変化ログ、invalid client ID時の安全な失敗、docs validatorを確認した。
+Python / uv CLI、payload生成、activity name、GitHub URL正規化、日本語表示、large image key設定、fake RPCによるRich Presence更新経路、Linux `node_repl` cwd project検出、複数project aggregate表示、monitor状態変化ログ、invalid client ID時の安全な失敗、docs validatorを確認した。
 
 ## Verification Verdict
 
@@ -102,6 +102,7 @@ project_detection smoke: detected live Codex node_repl project identities withou
 | AC-007 | PASS | `tests/test_cli.py` and `tests/test_presence.py` verify aggregate multi-project payload with no buttons. |
 | AC-008 | PASS | `tests/test_presence.py` verifies `large_image` is omitted by default and included when `large_image_key` is configured. |
 | AC-009 | PASS | `tests/test_cli.py` verifies monitor stderr includes startup, detection, update logs, and pre-client-ID detection logs. |
+| AC-010 | PASS | `tests/test_presence.py` verifies single-project and multi-project payloads include `name = "Codex (Desktop)"`. |
 
 ## Invariant Coverage
 
@@ -115,6 +116,7 @@ project_detection smoke: detected live Codex node_repl project identities withou
 | INV-006 | PASS | Diff review confirms `project_detection.py` reads `/proc/*/exe` and `/proc/*/cwd`, not `/proc/*/cmdline`. |
 | INV-007 | PASS | `tests/test_presence.py` covers default omission and configured `large_image` output. |
 | INV-008 | PASS | `tests/test_cli.py` asserts monitor status logs for the multi-project path and missing-client-ID path. |
+| INV-009 | PASS | `tests/test_presence.py` asserts activity name in generated payloads. |
 
 ## Deferred / Not Covered
 

@@ -5,7 +5,7 @@ A small Python CLI that publishes your current Codex work state to Discord Rich 
 It shows a compact, editor-like presence: repository, phase, and elapsed time. When the current Git remote can be normalized to a GitHub repository URL, it also adds a `View Repository` button.
 
 ```text
-Codex
+Codex (Desktop)
 Working on codex-discord-rpc
 Editing
 elapsed time
@@ -14,6 +14,8 @@ elapsed time
 ```
 
 Japanese labels are used by default. English labels can be enabled in the config.
+The activity name sent to Discord is `Codex (Desktop)`.
+If Discord still shows a different top-level title, rename the Discord application in the Developer Portal; some clients prefer the application name for that line.
 
 ## Features
 
@@ -137,7 +139,7 @@ uv run codex-discord-rpc monitor
 When one Codex project is detected, the project name is displayed. When multiple distinct projects are detected, the presence uses an aggregate display and omits repository buttons:
 
 ```text
-Codex
+Codex (Desktop)
 3個のCodexプロジェクトで作業中
 複数プロジェクト
 elapsed time
