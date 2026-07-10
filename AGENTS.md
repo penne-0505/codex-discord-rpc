@@ -19,6 +19,9 @@
 - テスト: `uv run pytest`
 - lint: `uv run ruff check .`
 - CLI payload確認: `uv run codex-discord-rpc render --repo .`
+- Static diagnostics: `uv run codex-discord-rpc doctor`
+- User service dry-run: `./scripts/install-user-service.sh --dry-run`
+- User service install/start: `./scripts/install-user-service.sh --enable-now`
 - docs validator: `./scripts/check-docs.sh`
 
 ## 実装上の境界

@@ -1,0 +1,16 @@
+# Codex Discord Rich Presence configuration
+enabled = true
+language = "ja"
+client_id = ""
+show_repository_button = true
+show_timer = true
+large_image_key = ""
+auto_detect_projects = true
+active_project_ttl_minutes = 20
+repo_path = "."
+phase = "editing"
+refresh_interval_seconds = 15
+reconnect_initial_seconds = 1
+reconnect_max_seconds = 30
+rpc_timeout_seconds = 3
+state_file = ""

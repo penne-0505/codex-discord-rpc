@@ -29,6 +29,22 @@ Codex Desktopのprojectを自動検出して反映する場合:
 uv run codex-discord-rpc monitor
 ```
 
+常駐serviceとして導入する場合:
+
+```bash
+uv run codex-discord-rpc doctor
+./scripts/install-user-service.sh --dry-run
+./scripts/install-user-service.sh --enable-now
+systemctl --user status codex-discord-rpc.service
+```
+
+Discord Desktopが後から起動した場合や再起動した場合も、monitorが内部で再接続します。checkoutを移動した場合や
+`.venv`を作り直した場合はinstallerを再実行してください。停止・rollbackは次を使います。
+
+```bash
+./scripts/install-user-service.sh --disable-now
+```
+
 フェーズ更新:
 
 ```bash

@@ -11,10 +11,11 @@ from codex_discord_rpc.project_detection import ProjectCandidate
 class FakePresence:
     instances: list["FakePresence"] = []
 
-    def __init__(self, client_id: str) -> None:
+    def __init__(self, client_id: str, **_kwargs: object) -> None:
         self.client_id = client_id
         self.connected = False
         self.cleared = False
+        self.closed = False
         self.updates: list[dict[str, object]] = []
         self.instances.append(self)
 
@@ -26,6 +27,18 @@ class FakePresence:
 
     def clear(self) -> None:
         self.cleared = True
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class InvalidID(Exception):
+    pass
+
+
+class InvalidPresence(FakePresence):
+    def connect(self) -> None:
+        raise InvalidID("private-error-marker")
 
 
 def test_run_once_updates_presence_with_fake_rpc(
@@ -125,7 +138,8 @@ def test_monitor_logs_detection_before_client_id_validation(
     assert result == 2
     stderr = capsys.readouterr().err
     assert "monitor started" in stderr
-    assert f"detected Codex project {project}" in stderr
+    assert f"detected Codex project {project.name}" in stderr
+    assert str(project.parent) not in stderr
     assert "client_id is required" in stderr
 
 
@@ -159,3 +173,78 @@ def test_monitor_once_uses_idle_payload_when_desktop_is_running(
     assert "buttons" not in instance.updates[0]
     stderr = capsys.readouterr().err
     assert "Codex Desktop is running without an active project" in stderr
+
+
+def test_ac018_doctor_does_not_require_discord_desktop(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    module = types.ModuleType("pypresence")
+    monkeypatch.setitem(sys.modules, "pypresence", module)
+    config_path = tmp_path / "config.toml"
+    config_path.write_text('client_id = "123"\n', encoding="utf-8")
+
+    result = main(["--config", str(config_path), "doctor"])
+
+    assert result == 0
+    output = capsys.readouterr().out
+    assert "Discord client ID is configured" in output
+    assert "Discord Desktop may be offline" in output
+
+
+def test_ac015_invalid_config_returns_clean_permanent_exit(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text("refresh_interval_seconds = 1\n", encoding="utf-8")
+
+    result = main(["--config", str(config_path), "doctor"])
+
+    assert result == 2
+    assert "configuration error: refresh_interval_seconds" in capsys.readouterr().err
+
+
+def test_ac018_invalid_config_does_not_log_raw_value(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        'reconnect_initial_seconds = "private-value-marker"\n',
+        encoding="utf-8",
+    )
+
+    result = main(["--config", str(config_path), "doctor"])
+
+    assert result == 2
+    stderr = capsys.readouterr().err
+    assert "reconnect_initial_seconds must be a number" in stderr
+    assert "private-value-marker" not in stderr
+
+
+def test_ac015_invalid_client_id_is_permanent_and_log_is_redacted(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    module = types.ModuleType("pypresence")
+    module.Presence = InvalidPresence
+    monkeypatch.setitem(sys.modules, "pypresence", module)
+
+    result = main(
+        [
+            "--config",
+            str(tmp_path / "missing-config.toml"),
+            "monitor",
+            "--client-id",
+            "123",
+            "--once",
+        ]
+    )
+
+    assert result == 4
+    stderr = capsys.readouterr().err
+    assert "permanent Discord RPC failure (InvalidID)" in stderr
+    assert "private-error-marker" not in stderr

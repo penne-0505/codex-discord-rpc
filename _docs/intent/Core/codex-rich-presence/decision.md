@@ -3,9 +3,9 @@ title: "Intent: Codex Rich Presence CLI"
 status: active
 draft_status: n/a
 created_at: 2026-07-07
-updated_at: 2026-07-07
+updated_at: 2026-07-10
 references:
-  - "_docs/plan/Core/codex-rich-presence/plan.md"
+  - "_docs/archives/plan/Core/codex-rich-presence/plan.md"
   - "_docs/qa/Core/codex-rich-presence/test-plan.md"
 related_issues: []
 related_prs: []
@@ -16,6 +16,10 @@ related_prs: []
 ## Context
 
 Codex作業中の状態をDiscordに表示したいが、プロンプト本文や対象ファイル名を外に出すと日常利用で情報量とプライバシーの釣り合いが崩れる。VSCode程度の粒度として、repo名、作業フェーズ、経過時間だけを基本表示にする。
+
+日常利用ではforegroundで`monitor`を起動し続ける操作を要求せず、DiscordとCodex Desktopの起動順や再起動に
+追従するuser serviceが必要である。常駐journalはterminalより永続性が高いため、absolute pathやraw errorを
+出さない境界も強化する。
 
 ## Decision
 
@@ -31,6 +35,14 @@ Codex作業中の状態をDiscordに表示したいが、プロンプト本文�
 - 複数のdistinct projectが検出された場合、単一projectを推定せず「N個のCodexプロジェクトで作業中」と集約表示し、repository buttonは出さない。
 - project候補がなくてもCodex DesktopのElectron本体が起動中なら、「待機中」と表示する。
 - `monitor` は検出状態の変化、Presence更新、clearをstderrへ簡潔に出力する。
+- checkout直結のsystemd user serviceを正規の常駐経路とし、Codex Desktop起動中・active projectなしでも待機中表示を維持する。
+- Discord未起動、pipe切断、timeoutはmonitor内部でbounded reconnectし、systemd restartを通常回復経路にしない。
+- reconnect中はlatest desired payloadだけを保持し、接続後にpayloadまたはclearを即時replayする。
+- `pypresence`はbackground pipe readerを持たないため、configured refresh intervalの同一updateを切断検出用health probeとして意図的に残す。
+- SIGINT / SIGTERMはbest-effort clearとcloseを行い、Discord切断済みのclear失敗は正常終了を妨げない。
+- journalにはproject basename/countとexception typeだけを出し、absolute path、raw exception message、secretを出さない。
+- static doctorはconfig、client ID、dependency、checkout runtimeを確認するが、Discord起動中であることを要求しない。
+- user unitは`NoNewPrivileges`とAF_UNIX限定を使うが、unprivileged filesystem namespaceを作る`PrivateTmp` / `ProtectSystem` / `ProtectHome`は使わない。他desktop processの`/proc/*/exe` / `cwd`が読めず、project検出と待機中判定を壊すためである。
 
 ## Alternatives
 
@@ -38,6 +50,9 @@ Codex作業中の状態をDiscordに表示したいが、プロンプト本文�
 - branch名やファイル名を出す案: 作業内容の漏れや誤表示のリスクが増えるため不採用。
 - Discord公式Social SDKを直接使う案: Python CLIとしての軽量実装に合いにくいため、初期版ではローカルRPC互換の `pypresence` を使う。
 - 複数project時に最新projectだけを表示する案: foreground threadを正確に特定できないため、誤表示を避ける目的で集約表示を採用する。
+- systemd `Restart=on-failure`だけでDiscord再起動へ追従する案: timerがresetし、latest desired clearを保持できず、通常のDesktop起動順をprocess failureとして扱うため不採用。
+- 同一payloadを完全に抑止する案: synchronous pypresenceではRPC requestがpipe切断検出を兼ねるため不採用。15秒既定のhealth refreshを残す。
+- user-local packageへcopy installする案: development checkoutと実行versionがずれるため現段階では不採用。checkout安定後に再評価できる。
 
 ## Rationale
 
@@ -51,6 +66,9 @@ Rich Presenceは見た人に「今何をしているか」を伝えるための�
 - `monitor` の自動検出はLinux `/proc` とCodex Desktopの現在のprocess modelに依存する。
 - Codex state DBが読めない場合、project recency filteringは行わず `/proc` 候補を使う。
 - 待機中判定はCodex Desktop Electron本体のprocessだけを使い、残存 `node_repl` processだけでは待機中にしない。
+- service unitはcheckoutと`.venv`の絶対pathへ依存し、移動・再作成後はinstaller再実行が必要になる。
+- `/proc`検出を維持するため、systemd filesystem namespaceによる分離は採用できない。serviceのfilesystem accessはcurrent userと同等になる。
+- permanent config / client ID errorではserviceを停止状態にし、transient Discord absenceではmonitor processを維持する。
 
 ## Quality Implications
 
@@ -62,6 +80,12 @@ Rich Presenceは見た人に「今何をしているか」を伝えるための�
 - monitorログは常駐運用でjournalを汚しすぎないよう、状態変化時だけ出す。
 - recency filteringではcwdとtimestampだけを読み、thread titleやcommand lineを表示に使わない。
 - 待機中表示ではrepository buttonを出さない。
+- reconnect coordinatorはwall clockやsleepに埋め込まず、monotonic timeとfake transportで検証可能にする。
+- desired stateがclearへ変わった後に古いpayloadをreplayしてはならない。
+- shutdown clearは時間制限付きかつidempotentで、接続喪失をtracebackやfailure exitにしない。
+- journal向けstatus logはabsolute project pathとraw exception textを含めない。
+- service preflightはDiscord offlineをfailureにせず、permanent configuration failureだけを拒否する。
+- unit hardening変更時は実user service内からCodex Desktop processとnode_repl候補が見えることを再検証する。
 
 ## Intent-derived Invariants
 
@@ -76,6 +100,13 @@ Rich Presenceは見た人に「今何をしているか」を伝えるための�
 - INV-009: Discord RPC payloadのactivity nameは `Codex (Desktop)` である。
 - INV-010: `monitor` はCodex state DBからrecencyを読める候補について、`active_project_ttl_minutes` より古いprojectを表示対象から外す。
 - INV-011: `monitor` はCodex Desktop Electron本体が起動中かつactive projectがない場合に待機中payloadを出し、`node_repl` 単独では待機中にしない。
+- INV-012: transient Discord IPC failureはmonitor processを終了させずbounded retryし、reconnect後にlatest desired stateだけをreplayしなければならない。
+- INV-013: desired stateがclearへ変わった後は、reconnectしても古いPresence payloadを再送してはならない。
+- INV-014: SIGINT / SIGTERM shutdownはbest-effort clearとcloseを一度だけ実行し、IPC failureでも正常終了しなければならない。
+- INV-015: 常駐serviceでもCodex Desktop起動中・active projectなしは待機中payloadを維持しなければならない。
+- INV-016: configured refresh intervalの同一updateはpypresence pipe health probeとしてのみ許可し、それより高頻度に送ってはならない。
+- INV-017: monitor / service logはabsolute project path、raw exception message、prompt、command、secretを含んではならない。
+- INV-018: static doctorとinstallerはDiscordの起動を要求せず、checkout runtimeとpermanent configurationだけをgateしなければならない。
 
 ## Enforced in (optional)
 
@@ -90,9 +121,13 @@ Rich Presenceは見た人に「今何をしているか」を伝えるための�
 - INV-009: `src/codex_discord_rpc/presence.py`, `tests/test_presence.py`
 - INV-010: `src/codex_discord_rpc/project_detection.py`, `src/codex_discord_rpc/cli.py`, `tests/test_project_detection.py`
 - INV-011: `src/codex_discord_rpc/project_detection.py`, `src/codex_discord_rpc/presence.py`, `src/codex_discord_rpc/cli.py`, `tests/test_project_detection.py`, `tests/test_presence.py`, `tests/test_cli.py`
+- INV-012〜016: `src/codex_discord_rpc/rpc.py`, `src/codex_discord_rpc/cli.py`, `tests/test_rpc.py`, `tests/test_cli.py`
+- INV-017: `src/codex_discord_rpc/cli.py`, `tests/test_cli.py`, live journal review
+- INV-018: `src/codex_discord_rpc/cli.py`, `scripts/install-user-service.sh`, service static/integration checks
 
 ## Rollback / Follow-ups
 
 - 問題があれば `enabled = false` にするか、`run` を止めればDiscord表示は消える。
 - 将来、Codex側の安定hookが用意された場合は `set-phase` をhookから呼ぶ統合を追加できる。
 - `node_repl` のprocess modelが変わった場合は `auto_detect_projects = false` に戻し、state/config projectを使う。
+- serviceは`scripts/install-user-service.sh --disable-now`で停止・無効化し、configとunitを保持したまま調査できる。

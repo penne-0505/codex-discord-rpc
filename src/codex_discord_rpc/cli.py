@@ -3,7 +3,9 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import signal
 import sys
+import threading
 import time
 
 from .config import Config, default_config_path, load_config, write_default_config
@@ -16,11 +18,16 @@ from .project_detection import (
     is_codex_desktop_running,
     iter_node_repl_candidates,
 )
+from .rpc import BackoffPolicy, CoordinatorEvent, PermanentPresenceError, PresenceCoordinator
 from .state import default_state_path, load_state, write_repo_path, write_state
 
 
 def _log(message: str) -> None:
     print(f"[codex-discord-rpc] {message}", file=sys.stderr, flush=True)
+
+
+def _check(status: str, message: str) -> None:
+    print(f"[{status}] {message}")
 
 
 def _config_from_args(args: argparse.Namespace) -> Config:
@@ -74,7 +81,7 @@ def cmd_render(args: argparse.Namespace) -> int:
     return 0
 
 
-def _connect_presence(config: Config):
+def _presence_factory(config: Config):
     if not config.enabled:
         print("codex-discord-rpc is disabled by config", file=sys.stderr)
         return None, 0
@@ -91,13 +98,62 @@ def _connect_presence(config: Config):
         print(f"pypresence is not installed: {exc}", file=sys.stderr)
         return None, 2
 
-    rpc = Presence(config.client_id)
+    return (
+        lambda: Presence(
+            config.client_id,
+            connection_timeout=config.rpc_timeout_seconds,
+            response_timeout=config.rpc_timeout_seconds,
+        ),
+        0,
+    )
+
+
+def _connect_presence(config: Config):
+    factory, status = _presence_factory(config)
+    if factory is None:
+        return None, status
+    rpc = factory()
     try:
         rpc.connect()
     except Exception as exc:  # pypresence raises library-specific exceptions for local RPC failures.
         print(f"failed to connect to Discord Rich Presence: {exc}", file=sys.stderr)
         return None, 3
     return rpc, 0
+
+
+def cmd_doctor(args: argparse.Namespace) -> int:
+    config = _config_from_args(args)
+    failures = 0
+    config_path = Path(args.config).expanduser() if args.config else default_config_path()
+    if config_path.exists():
+        _check("PASS", f"config exists: {config_path}")
+    else:
+        failures += 1
+        _check("FAIL", f"config is missing: {config_path}")
+
+    if config.client_id:
+        _check("PASS", "Discord client ID is configured")
+    else:
+        failures += 1
+        _check("FAIL", "Discord client ID is missing")
+
+    try:
+        import pypresence  # noqa: F401
+    except ImportError:
+        failures += 1
+        _check("FAIL", "pypresence is unavailable")
+    else:
+        _check("PASS", "pypresence is available")
+
+    if Path("/proc").is_dir():
+        _check("PASS", "Linux process metadata is available")
+    else:
+        failures += 1
+        _check("FAIL", "Linux /proc is unavailable")
+
+    _check("PASS", f"Python runtime is executable: {Path(sys.executable).resolve()}")
+    _check("INFO", "Discord Desktop may be offline; monitor will retry without exiting")
+    return 2 if failures else 0
 
 
 def cmd_run(args: argparse.Namespace) -> int:
@@ -181,14 +237,30 @@ def _log_monitor_status(status_key: str) -> None:
     elif status == "idle":
         _log(f"Codex Desktop is running without an active project{stale_suffix}")
     elif status_key.startswith("detected-project:"):
-        _log(f"detected Codex project {status.removeprefix('detected-project:')}{stale_suffix}")
+        project = Path(status.removeprefix("detected-project:")).name
+        _log(f"detected Codex project {project}{stale_suffix}")
     elif status.startswith("detected-multiple:"):
-        _, count, roots = status.split(":", 2)
-        _log(f"detected {count} Codex projects: {roots}{stale_suffix}")
+        _, count, _roots = status.split(":", 2)
+        _log(f"detected {count} Codex projects{stale_suffix}")
     elif status.startswith("state-project:"):
-        _log(f"using explicit state project {status.removeprefix('state-project:')}")
+        project = Path(status.removeprefix("state-project:")).name
+        _log(f"using explicit state project {project}")
     elif status.startswith("config-project:"):
-        _log(f"using configured fallback project {status.removeprefix('config-project:')}")
+        project = Path(status.removeprefix("config-project:")).name
+        _log(f"using configured fallback project {project}")
+
+
+def _log_coordinator_events(events: tuple[CoordinatorEvent, ...]) -> None:
+    for event in events:
+        if event.kind == "connected":
+            _log("connected to Discord IPC")
+        elif event.kind == "retry":
+            retry = f"{event.retry_seconds:g}" if event.retry_seconds is not None else "unknown"
+            _log(f"Discord IPC unavailable; retry in {retry}s ({event.error_type})")
+        elif event.kind == "updated" and not event.health_refresh:
+            _log("updated Discord Rich Presence")
+        elif event.kind == "cleared":
+            _log("cleared Discord Rich Presence")
 
 
 def cmd_monitor(args: argparse.Namespace) -> int:
@@ -200,45 +272,72 @@ def cmd_monitor(args: argparse.Namespace) -> int:
         f"active_project_ttl_minutes={config.active_project_ttl_minutes} "
         f"interval={config.refresh_interval_seconds}s"
     )
-    _, initial_status = _monitor_payload(config, started_at)
+    initial_payload, initial_status = _monitor_payload(config, started_at)
     _log_monitor_status(initial_status)
 
-    rpc, status = _connect_presence(config)
-    if rpc is None:
+    factory, status = _presence_factory(config)
+    if factory is None:
         return status
 
+    # intent: INV-012 (Core/codex-rich-presence) — Discord Desktop lifecycle is
+    # recovered inside monitor; systemd remains a supervisor for process faults.
+    coordinator = PresenceCoordinator(
+        factory,
+        backoff=BackoffPolicy(
+            initial_delay=config.reconnect_initial_seconds,
+            maximum_delay=config.reconnect_max_seconds,
+        ),
+        refresh_interval=config.refresh_interval_seconds,
+    )
+    coordinator.set_desired(
+        initial_payload.as_rpc_kwargs() if initial_payload is not None else None
+    )
+    stop_event = threading.Event()
+    previous_handlers: dict[int, object] = {}
+
+    def request_stop(signum: int, _frame: object) -> None:
+        if not stop_event.is_set():
+            _log(f"received signal {signum}; shutting down")
+        stop_event.set()
+
     try:
-        active = False
         last_status: str | None = initial_status
-        while True:
-            payload, status_key = _monitor_payload(config, started_at)
-            if status_key != last_status:
-                _log_monitor_status(status_key)
-                last_status = status_key
-            if payload is None:
-                if active:
-                    rpc.clear()
-                    _log("cleared Discord Rich Presence")
-                    active = False
-                if args.once:
-                    return 0
-                time.sleep(config.refresh_interval_seconds)
-                continue
+        for signum in (signal.SIGINT, signal.SIGTERM):
+            previous_handlers[signum] = signal.signal(signum, request_stop)
+        now = time.monotonic()
+        next_scan_at = now + config.refresh_interval_seconds
+        while not stop_event.is_set():
             try:
-                rpc.update(**payload.as_rpc_kwargs())
-                if not active:
-                    _log("updated Discord Rich Presence")
-                active = True
-            except Exception as exc:
-                print(f"failed to update Discord Rich Presence: {exc}", file=sys.stderr)
-                return 3
+                events = coordinator.pump(now)
+            except PermanentPresenceError as error:
+                _log(f"permanent Discord RPC failure ({error.error_type})")
+                return 4
+            _log_coordinator_events(events)
             if args.once:
-                rpc.clear()
-                return 0
-            time.sleep(config.refresh_interval_seconds)
-    except KeyboardInterrupt:
-        rpc.clear()
+                return 3 if any(event.kind == "retry" for event in events) else 0
+
+            wake_at = coordinator.next_action_at(next_scan_at)
+            stop_event.wait(max(0.05, wake_at - time.monotonic()))
+            if stop_event.is_set():
+                break
+
+            now = time.monotonic()
+            if now >= next_scan_at:
+                payload, status_key = _monitor_payload(config, started_at)
+                if status_key != last_status:
+                    _log_monitor_status(status_key)
+                    last_status = status_key
+                coordinator.set_desired(payload.as_rpc_kwargs() if payload is not None else None)
+                next_scan_at = now + config.refresh_interval_seconds
         return 0
+    finally:
+        clear_confirmed = coordinator.shutdown()
+        if clear_confirmed:
+            _log("cleared Discord Rich Presence during shutdown")
+        else:
+            _log("monitor stopped; no clear acknowledgement was available")
+        for signum, previous_handler in previous_handlers.items():
+            signal.signal(signum, previous_handler)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -249,6 +348,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--config", help="Path to config.toml")
 
     subcommands = parser.add_subparsers(dest="command", required=True)
+
+    doctor_parser = subcommands.add_parser(
+        "doctor",
+        help="Check config and local runtime without requiring Discord Desktop",
+    )
+    doctor_parser.set_defaults(func=cmd_doctor)
 
     init_parser = subcommands.add_parser("init", help="Create a default config file")
     init_parser.add_argument("--path", help="Config path to create")
@@ -303,7 +408,14 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    return int(args.func(args))
+    try:
+        return int(args.func(args))
+    except ValueError as error:
+        print(f"configuration error: {error}", file=sys.stderr)
+        return 2
+    except OSError as error:
+        print(f"runtime error ({type(error).__name__})", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

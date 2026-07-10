@@ -2,13 +2,13 @@
 title: "QA Test Plan: Codex Rich Presence CLI"
 status: active
 draft_status: n/a
-qa_status: planned
-risk: Medium
+qa_status: in-progress
+risk: High
 created_at: 2026-07-07
-updated_at: 2026-07-07
+updated_at: 2026-07-10
 references:
   - "_docs/intent/Core/codex-rich-presence/decision.md"
-  - "_docs/plan/Core/codex-rich-presence/plan.md"
+  - "_docs/archives/plan/Core/codex-rich-presence/plan.md"
 related_issues: []
 related_prs: []
 ---
@@ -17,8 +17,8 @@ related_prs: []
 
 ## Source of Intent
 
-- TODO: `Core-Feat-9`
-- Plan: `_docs/plan/Core/codex-rich-presence/plan.md`
+- TODO: `Core-Feat-9`, `Core-Enhance-11`
+- Plan: `_docs/archives/plan/Core/codex-rich-presence/plan.md`
 - Intent: `_docs/intent/Core/codex-rich-presence/decision.md`
 
 ## Quality Goal
@@ -27,6 +27,7 @@ Discordへ出す情報をrepo名、作業フェーズ、timerに絞り、GitHub 
 `monitor` ではCodex Desktopの `node_repl` cwdをproject候補として扱い、複数project時に誤った単一repoを表示しないことを確認する。
 Codex state DBからrecencyを読める場合、古いproject候補を既定20分TTLで表示対象から外すことを確認する。
 project候補がなくてもCodex Desktop Electron本体が起動中なら待機中表示へ切り替わることを確認する。
+常駐serviceではDiscordの起動順・再起動・SIGTERMへ自律回復し、latest desiredだけを表示し、journalへpathやsecretを残さないことを確認する。
 
 ## Acceptance Criteria
 
@@ -42,6 +43,13 @@ project候補がなくてもCodex Desktop Electron本体が起動中なら待機
 - AC-010: Discord RPC payloadのactivity nameが `Codex (Desktop)` である。
 - AC-011: `monitor` がCodex state DB recencyに基づいて古いproject候補を除外できる。
 - AC-012: `monitor` がCodex Desktop起動中かつactive projectなしの状態を待機中として表示できる。
+- AC-013: checkout直結のunit templateとinstallerがdry-run、enable-now、disable-nowを提供する。
+- AC-014: transient Discord failureをbounded retryし、reconnect後にlatest desired payloadまたはclearをreplayする。
+- AC-015: invalid client ID、missing config/dependencyをpermanent failureとしてclean exitし、service restart loopを防ぐ。
+- AC-016: SIGINT / SIGTERMでbest-effort clearとcloseを行い、IPC failureでも正常終了する。
+- AC-017: 常駐serviceで待機中表示とconfigured intervalのhealth refreshを維持する。
+- AC-018: monitor / service logへabsolute path、raw exception message、prompt、command、secretを出さない。
+- AC-019: live user serviceがinstalled、enabled、activeで、publishとstop/start clearを確認できる。
 
 ## Intent-derived Invariants
 
@@ -56,16 +64,24 @@ project候補がなくてもCodex Desktop Electron本体が起動中なら待機
 - INV-009: Discord RPC payloadのactivity nameは `Codex (Desktop)` である。
 - INV-010: `monitor` はCodex state DBからrecencyを読める候補について、`active_project_ttl_minutes` より古いprojectを表示対象から外す。
 - INV-011: `monitor` はCodex Desktop Electron本体が起動中かつactive projectがない場合に待機中payloadを出し、`node_repl` 単独では待機中にしない。
+- INV-012: transient IPC failureはmonitorを終了させずbounded retryし、latest desiredだけをreplayする。
+- INV-013: desired clear後は古いPresenceをreplayしない。
+- INV-014: signal shutdownはclear / closeを一度だけbest-effort実行し、IPC failureでも正常終了する。
+- INV-015: 常駐serviceでもCodex Desktop起動中・active projectなしは待機中にする。
+- INV-016: 同一payload updateはconfigured refresh intervalのhealth probeに限定する。
+- INV-017: journal logにabsolute project path、raw exception text、作業詳細、secretを含めない。
+- INV-018: doctor / installerはDiscord offlineを許容し、permanent configとcheckout runtimeだけをgateする。
 
 ## Risk Assessment
 
-- Risk level: Medium
-- Risk rationale: Discord RPC連携と公開表示内容を扱うため、表示漏れと誤表示の検証が必要。
+- Risk level: High
+- Risk rationale: Discord RPC連携、login時常駐、systemd lifecycle、公開表示内容を扱う。
 - Regression risk: phaseやpayload schemaの変更で表示粒度が崩れる可能性がある。
 - Data safety risk: 永続化するのはphaseと開始時刻だけ。
 - Security / privacy risk: ファイル名、branch名、プロンプト本文、コマンド内容を表示しないことで抑制する。
 - Process inspection risk: MCP command lineには認証ヘッダが含まれる場合があるため、monitor実装はcmdline全文を読まない。
-- UX risk: Discord Desktop未起動時は `run` が失敗するため、`render` で事前確認できるようにする。
+- UX risk: login時にDiscordが未起動でもserviceが停止せず、後から自動復帰する必要がある。
+- Operations risk: checkout移動、`.venv`再作成、permanent config errorをrestart loopやsilent failureにしない。
 - Agent misbehavior risk: template由来TODOやREADMEを残すと完成済みrepoと誤認しにくくなるため、docsをプロジェクト固有化する。
 
 ## Test Strategy
@@ -77,6 +93,10 @@ project候補がなくてもCodex Desktop Electron本体が起動中なら待機
 - Unit: fake Codex state DBでrecencyを持つproject候補だけTTL判定されることをpytestで確認する。
 - Unit: fake `/proc` でElectron本体だけをCodex Desktop起動判定に使うことをpytestで確認する。
 - Unit: fake RPCの `monitor --once` で待機中payloadが送られることをpytestで確認する。
+- Unit: fake clock / transportでconnect failure、update failure、clear中切断、latest replay、backoff、health refresh、shutdownを確認する。
+- Unit: CLI signal stop、permanent error、path-redacted logs、doctorを確認する。
+- Integration: installer dry-run、temporary config home、rendered unit、`systemd-analyze --user verify`を確認する。
+- Live: user service install/enable、Discord publish、SIGTERM clear、restart、journal redactionを確認する。
 - Integration: `uv run codex-discord-rpc render --repo .` を実行する。
 - E2E: Discord Desktop接続はローカル環境依存のため、client ID未設定時の安全な失敗のみ確認する。
 - Manual QA: README/Quickstart/AGENTS/TODOの内容を確認する。
@@ -99,6 +119,13 @@ project候補がなくてもCodex Desktop Electron本体が起動中なら待機
 | AC-010 | TODO | activity nameが `Codex (Desktop)` である | unit | `uv run pytest` | payload `name` assertion | planned |
 | AC-011 | TODO | 古いCodex project候補をTTLで除外する | unit | `uv run pytest` | fake state DBで古い候補だけ除外される | planned |
 | AC-012 | TODO | Desktop起動中かつactive projectなしでは待機中表示する | unit | `uv run pytest` | fake RPC monitorで `待機中` payload | planned |
+| AC-013 | TODO | checkout直結service installer | integration | installer dry-run / isolated path / systemd verify | unit path、modes、hardeningが正しい | verified |
+| AC-014 | TODO | bounded reconnectとlatest replay | unit + live | `tests/test_rpc.py`; live service | late Discordとdisconnectから復帰 | verified |
+| AC-015 | TODO | permanent failureをrestartしない | unit + static | CLI tests; unit `RestartPreventExitStatus` | clean exit、restart loopなし | verified |
+| AC-016 | TODO | signal shutdown clear / close | unit + live | CLI/runtime tests; service stop journal | idempotent clear、exit 0 | verified |
+| AC-017 | TODO | idle + health refresh | unit + live | fake clock; active service | 待機中維持、interval未満の送信なし | verified |
+| AC-018 | TODO | safe journal logging | unit + review | CLI log capture; journal | path/raw error/secretなし | verified |
+| AC-019 | TODO | live service operational | live | systemctl / journal | installed、enabled、active、publish、clear | verified |
 | INV-001 | intent | payloadに作業詳細を含めない | unit/review | `tests/test_presence.py`, diff review | details/state/start/buttonsのみ | planned |
 | INV-002 | intent | GitHub remoteだけボタン化する | unit | `tests/test_git_info.py` | non-GitHub remoteはNone | planned |
 | INV-003 | intent | 日本語デフォルト、英語は明示時のみ | unit | `tests/test_presence.py` | ja/enの期待値が通る | planned |
@@ -110,31 +137,46 @@ project候補がなくてもCodex Desktop Electron本体が起動中なら待機
 | INV-009 | intent | activity nameが `Codex (Desktop)` である | unit | `tests/test_presence.py` | single/multi payloadで `name` assertion | planned |
 | INV-010 | intent | state DB recencyで古い候補を除外する | unit | `tests/test_project_detection.py` | TTL超過候補だけ表示対象から外れる | planned |
 | INV-011 | intent | Electron本体起動中のみ待機中表示する | unit | `tests/test_project_detection.py`, `tests/test_cli.py` | `node_repl` 単独はFalse、Electronありは待機中payload | planned |
+| INV-012 | intent | transient retry + latest replay | unit | `tests/test_rpc.py` | bounded schedule、reconnect後latestだけ | verified |
+| INV-013 | intent | clear desiredをstale payloadより優先 | unit | `tests/test_rpc.py` | reconnect後clear、old updateなし | verified |
+| INV-014 | intent | safe signal shutdown | unit + live | runtime test; systemctl stop | clear/close once、failureでもnormal | verified |
+| INV-015 | intent | service idle display | unit + live | CLI test; profile/journal | Desktop openで待機中 | verified |
+| INV-016 | intent | configured health probe cadence | fake-clock unit | `tests/test_rpc.py` | interval未満のduplicateなし | verified |
+| INV-017 | intent | safe journal boundary | unit + review | CLI capture; journal | absolute path/raw error/secretなし | verified |
+| INV-018 | intent | offline-safe doctor / installer | unit + integration | doctor; installer | Discord socketなしでもpreflight PASS | verified |
 
 ## Manual QA Checklist
 
-- [ ] READMEがCodex Discord RPCの目的と利用手順を説明している。
-- [ ] READMEがmonitorと複数project表示を説明している。
-- [ ] Quickstartがテンプレート初期作業ではなく、このCLIの起動手順を説明している。
-- [ ] AGENTSがプロジェクト固有コマンドと表示境界を説明している。
-- [ ] TODOに完了済みテンプレート作業や不要な導入スコープ作業が残っていない。
+- [x] READMEがCodex Discord RPCの目的と利用手順を説明している。
+- [x] READMEがmonitorと複数project表示を説明している。
+- [x] Quickstartがテンプレート初期作業ではなく、このCLIの起動手順を説明している。
+- [x] AGENTSがプロジェクト固有コマンドと表示境界を説明している。
+- [x] TODOに完了済みテンプレート作業や不要な導入スコープ作業が残っていない。
+- [x] README / Quickstartがinstaller、doctor、journal、rollback、checkout移動後の再installを説明している。
+- [x] live user serviceがenabled / activeで待機中またはactive projectをpublishする。
 
 ## Regression Checklist
 
-- [ ] 日本語phase labelが維持されている。
-- [ ] GitHub以外のremoteからボタンを作らない。
-- [ ] renderはDiscord Desktopなしで動く。
-- [ ] monitorはcmdline全文を読まない。
-- [ ] large image keyが空の既存設定でpayloadが変わりすぎない。
-- [ ] active project TTLが既定20分で、`0` なら無効化される。
-- [ ] active projectなしでCodex Desktop本体が起動中なら待機中になる。
-- [ ] monitorログがcmdline全文やsecretを出さない。
+- [x] 日本語phase labelが維持されている。
+- [x] GitHub以外のremoteからボタンを作らない。
+- [x] renderはDiscord Desktopなしで動く。
+- [x] monitorはcmdline全文を読まない。
+- [x] large image keyが空の既存設定でpayloadが変わりすぎない。
+- [x] active project TTLが既定20分で、`0` なら無効化される。
+- [x] active projectなしでCodex Desktop本体が起動中なら待機中になる。
+- [x] monitorログがcmdline全文やsecretを出さない。
+- [x] Discord late start / restartをfake transportで再現し、latest desiredだけをreplayする。
+- [x] SIGTERM時のclear失敗がservice failureにならない。
+- [x] checkout移動後はinstaller再実行が必要とdocsに残る。
 
 ## High-risk Checklist
 
-Use this section only for Risk High / Critical.
-
-- [ ] Not applicable.
+- [x] Rollback: `--disable-now`でserviceを停止・無効化し、unit/configを保持する。
+- [x] Data safety: user configとunit以外の永続dataを増やさない。
+- [x] Security/privacy: unit、journal、diffにclient ID値、secret、absolute project pathを残さない。
+- [x] Recovery: transient failureは内部retry、permanent failureはsystemd restart preventionで区別する。
+- [x] Live: service stop clear後にstartしてenabled / activeへ戻す。
+- [x] Hardening: rendered unit内とlive service内の双方でCodex Desktop / node_repl検出が維持される。
 
 ## Out of Scope
 

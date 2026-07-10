@@ -26,6 +26,7 @@ If Discord still shows a different top-level title, rename the Discord applicati
 - Dry-run JSON rendering without connecting to Discord
 - Linux project auto-detection for Codex Desktop sessions
 - File-based phase updates for simple external automation
+- Resilient Discord reconnect and a checkout-bound systemd user service
 
 ## Privacy
 
@@ -100,6 +101,9 @@ active_project_ttl_minutes = 20
 repo_path = "."
 phase = "editing"
 refresh_interval_seconds = 15
+reconnect_initial_seconds = 1
+reconnect_max_seconds = 30
+rpc_timeout_seconds = 3
 state_file = ""
 ```
 
@@ -116,6 +120,10 @@ When `state_file` is empty, the default state file is:
 `auto_detect_projects` enables Linux `/proc` based Codex Desktop project detection. It looks for Codex Desktop `node_repl` helper processes and uses their working directories as project candidates.
 
 `active_project_ttl_minutes` filters detected projects by Codex Desktop thread recency from `~/.codex/state_5.sqlite`. The default is 20 minutes. Set it to `0` to keep every live `node_repl` project candidate.
+
+`refresh_interval_seconds` controls project rescans and the low-frequency Discord IPC health update.
+The repeated update is intentional because synchronous `pypresence` only observes a closed pipe while making an RPC request.
+Reconnect attempts use bounded exponential backoff from `reconnect_initial_seconds` to `reconnect_max_seconds`.
 
 ## Usage
 
@@ -171,31 +179,25 @@ uv run codex-discord-rpc set-project /path/to/project
 
 ## systemd user service
 
-For always-on local use, run `monitor` as a user service.
-
-Example `~/.config/systemd/user/codex-discord-rpc.service`:
-
-```ini
-[Unit]
-Description=Codex Discord Rich Presence
-
-[Service]
-Type=simple
-WorkingDirectory=/path/to/codex-discord-rpc
-ExecStart=/path/to/codex-discord-rpc/.venv/bin/codex-discord-rpc monitor
-Restart=on-failure
-RestartSec=5
-
-[Install]
-WantedBy=default.target
-```
-
-Enable it:
+For always-on local use, install the checkout-bound user service after editing the config:
 
 ```bash
-systemctl --user daemon-reload
-systemctl --user enable --now codex-discord-rpc.service
+uv run codex-discord-rpc doctor
+./scripts/install-user-service.sh --dry-run
+./scripts/install-user-service.sh --enable-now
+systemctl --user status codex-discord-rpc.service
+journalctl --user -u codex-discord-rpc.service -f
 ```
+
+The service starts with the graphical user session. Discord Desktop may start later: transient socket failures are retried inside `monitor`, and the latest desired Presence is replayed after reconnect. `systemd` only restarts unexpected process failures. Invalid configuration, missing runtime dependencies, and an invalid Discord client ID stop cleanly without a restart loop.
+
+The generated unit points at this checkout and `.venv`. Re-run the installer after moving the checkout or recreating `.venv`. To roll back without deleting diagnostic files:
+
+```bash
+./scripts/install-user-service.sh --disable-now
+```
+
+SIGINT and SIGTERM perform a bounded best-effort Presence clear. Project logs use repository names and counts rather than absolute paths; raw RPC exception messages are not written to the journal.
 
 List supported phases:
 

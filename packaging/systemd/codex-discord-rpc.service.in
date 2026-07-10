@@ -1,0 +1,24 @@
+[Unit]
+Description=Codex Discord Rich Presence Monitor
+Documentation=https://github.com/penne-0505/codex-discord-rpc
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+WorkingDirectory=@PROJECT_ROOT@
+Environment=PYTHONUNBUFFERED=1
+ExecStart=@CLI_BIN@ --config @CONFIG_FILE@ monitor
+Restart=on-failure
+RestartPreventExitStatus=2 4
+RestartSec=5s
+TimeoutStopSec=8s
+UMask=0077
+NoNewPrivileges=true
+RestrictAddressFamilies=AF_UNIX
+# intent why-not: INV-015 (Core/codex-rich-presence) — filesystem namespace
+# hardening hides other desktop processes' /proc exe/cwd from an unprivileged
+# user unit, breaking project detection and the required idle Presence.
+
+[Install]
+WantedBy=default.target
