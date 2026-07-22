@@ -1,6 +1,9 @@
-// 段階的導入向けの共有スコープ解決: 「導入以降に追加された docs」だけを
+// 段階的導入向けの共有スコープ解決: 既定では「導入以降に追加された docs」だけを
 // 検証対象へ絞るための母集合を一箇所で決める。env 未設定なら null を返し、
 // 全走査の従来挙動を保つ（後方互換）。
+
+const DEFAULT_DIFF_FILTER = "A";
+const DIFF_FILTER_RE = /^[ACDMRTUXB]+$/;
 
 const normalizePath = (path) => {
   const segments = [];
@@ -28,11 +31,28 @@ const fromPathList = (raw) =>
     .filter(Boolean)
     .map(normalizePath);
 
+const diffFilter = () => {
+  const raw = readEnv("DD_SCOPE_DIFF_FILTER")?.trim();
+  if (raw === undefined || raw === "") return DEFAULT_DIFF_FILTER;
+  if (!DIFF_FILTER_RE.test(raw)) {
+    throw new Error(
+      `scope: DD_SCOPE_DIFF_FILTER must contain only git diff-filter letters (${raw})`,
+    );
+  }
+  return raw;
+};
+
 const fromGitDiff = async (base) => {
+  const filter = diffFilter();
   let output;
   try {
     const command = new Deno.Command("git", {
-      args: ["diff", "--name-only", "--diff-filter=A", `${base}...HEAD`],
+      args: [
+        "diff",
+        "--name-only",
+        `--diff-filter=${filter}`,
+        `${base}...HEAD`,
+      ],
       stdout: "piped",
       stderr: "piped",
     });
@@ -58,7 +78,8 @@ const fromGitDiff = async (base) => {
 
 // 検証対象の母集合を返す。
 // - DD_SCOPE_PATHS: 改行 / コロン区切りの明示パスリスト（テスト・CI 自前計算向け）。
-// - DD_SCOPE_BASE: git ref。`<ref>...HEAD` で追加されたファイルのみ。
+// - DD_SCOPE_BASE: git ref。既定では `<ref>...HEAD` で追加されたファイルのみ。
+// - DD_SCOPE_DIFF_FILTER: DD_SCOPE_BASE 使用時の git diff-filter。既定は A。
 // - いずれも未設定: null（= 全走査）。
 // 優先順位は DD_SCOPE_PATHS > DD_SCOPE_BASE > null。
 export const loadScope = async () => {

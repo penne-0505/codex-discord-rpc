@@ -74,3 +74,25 @@ uv run pytest
 uv run ruff check .
 ./scripts/check-docs.sh
 ```
+
+## 5. Docs workflow maintenance
+
+### Agent lifecycle hooks
+
+Codexは[`.codex/hooks.json`](.codex/hooks.json)、Claude Codeは[`.claude/settings.json`](.claude/settings.json)から共通の[`scripts/agent-workflow-hook.mjs`](scripts/agent-workflow-hook.mjs)を呼びます。hookはworkflow contextと安全確認を補助しますが、docsの自動更新やQA evidenceの代替は行いません。初回利用時は各agentのhook設定を確認してください。
+
+久しぶりの再開、handoff探索、docsのstale確認にはread-onlyの`docs-inventory` skillを使います。整理を実行する場合は棚卸し結果を確認してから`docs-cleanup`へ進みます。
+
+### Template の継続更新
+
+導入後のprojectへ新しいtemplate releaseを統合する場合は、moving `main`ではなく推奨tagを更新単位にします。
+
+1. `docs-template.lock.json`から前回取り込んだtagとfull SHA (`B`)を確認する。
+2. 取り込む推奨tag (`U`)をfull SHAへ解決する。
+3. [`docs-template-migration`](.agents/skills/docs-template-migration/SKILL.md) skillで`B -> U`とproject customizationのthree-way inventoryを作る。
+4. compatibility checksの成功後にlockを最後のmigration writeとして`U`へ更新する。
+5. strict schema migrationの状態はlockではなくmigration verificationへ記録する。
+
+`v1.0.0` より前に導入されたprojectはlockとlocal migration skillを持たない場合があります。repository history、導入記録、upstreamと一致するblobから最後に採用したcommit `B`を復元し、owner確認後に進めます。`v1.0.0`を中継する必要はなく、`v1.0.0`以降の任意の推奨 tag へ直接移行できます。`B`を一意に決められない場合は書き込み前に停止します。
+
+`DD_SCOPE_BASE` は導入先 repository 内でvalidator対象を絞る値です。upstream template revisionを示す`docs-template.lock.json`とは用途が異なります。詳細は[template revision provenance](_docs/standards/documentation_operations.md#template-revision-provenance)を参照してください。

@@ -21,6 +21,7 @@ const ROOT_RELATIVE_FILES = [
   "QUICKSTART.md",
   "LICENSE.txt",
 ];
+const FIXTURE_ROOT = "_evals/validator-fixtures/";
 
 const normalizePath = (path) => {
   const segments = [];
@@ -78,10 +79,10 @@ const isDirectory = async (path) => {
 
 const isExternal = (target) =>
   /^[a-z][a-z0-9+.-]*:/i.test(target) ||
-  target.startsWith("//") ||
-  target.startsWith("#");
+  target.startsWith("//");
 
 const isTemplatePlaceholder = (target) => /<[^>]+>/.test(target);
+const isValidatorFixture = (file) => file.startsWith(FIXTURE_ROOT);
 
 const stripCodeBlocks = (src) => {
   const output = [];
@@ -184,26 +185,71 @@ const parseFrontMatter = (src) => {
   return { attrs, error: null };
 };
 
-const extractMarkdownTargets = (src) => {
+const normalizeLinkTarget = (raw) => {
+  let target = raw.trim();
+  if (target.startsWith("<")) {
+    const close = target.indexOf(">");
+    target = close === -1 ? target.slice(1) : target.slice(1, close);
+  } else {
+    target = target.split(/\s+/)[0];
+  }
+  return target;
+};
+
+const referenceDefinitions = (body) => {
+  const refs = new Map();
+  const defRe = /^\s{0,3}\[([^\]]+)]:\s*(\S+(?:\s+\S+)*)\s*$/gm;
+  for (const match of body.matchAll(defRe)) {
+    refs.set(match[1].trim().toLowerCase(), normalizeLinkTarget(match[2]));
+  }
+  return refs;
+};
+
+const extractInlineMarkdownTargets = (body) => {
   const targets = [];
-  const body = stripCodeBlocks(src);
   const linkRe = /!?\[[^\]]*]\(([^)]+)\)/g;
   for (const match of body.matchAll(linkRe)) {
-    let target = match[1].trim();
-    if (target.startsWith("<")) {
-      const close = target.indexOf(">");
-      target = close === -1 ? target.slice(1) : target.slice(1, close);
-    } else {
-      target = target.split(/\s+/)[0];
+    targets.push(normalizeLinkTarget(match[1]));
+  }
+  return targets;
+};
+
+const extractReferenceMarkdownTargets = (file, body, errors) => {
+  const targets = [];
+  const refs = referenceDefinitions(body);
+  for (const target of refs.values()) targets.push(target);
+
+  const usageRe = /!?\[([^\]]+)]\[([^\]]*)]/g;
+  for (const match of body.matchAll(usageRe)) {
+    const label = match[2].trim() === "" ? match[1].trim() : match[2].trim();
+    const target = refs.get(label.toLowerCase());
+    if (target === undefined) {
+      errors.push({
+        file,
+        message: `missing reference-style link definition: ${label}`,
+      });
+      continue;
     }
     targets.push(target);
   }
   return targets;
 };
 
-const stripAnchorAndQuery = (target) => {
-  const withoutAnchor = target.split("#")[0];
-  return withoutAnchor.split("?")[0];
+const extractMarkdownTargets = (file, src, errors) => {
+  const body = stripCodeBlocks(src);
+  return [
+    ...extractInlineMarkdownTargets(body),
+    ...extractReferenceMarkdownTargets(file, body, errors),
+  ];
+};
+
+const splitTarget = (target) => {
+  const [beforeAnchor, rawAnchor = ""] = target.split("#");
+  const clean = beforeAnchor.split("?")[0];
+  return {
+    clean,
+    anchor: rawAnchor === "" ? "" : rawAnchor.split("?")[0],
+  };
 };
 
 const isRootRelative = (target) =>
@@ -212,8 +258,8 @@ const isRootRelative = (target) =>
 
 const resolveTarget = (fromFile, target) => {
   if (isExternal(target)) return null;
-  const clean = stripAnchorAndQuery(target);
-  if (clean === "") return null;
+  const { clean } = splitTarget(target);
+  if (clean === "") return normalizePath(fromFile);
   let decoded = clean;
   try {
     decoded = decodeURIComponent(clean);
@@ -225,7 +271,43 @@ const resolveTarget = (fromFile, target) => {
   return normalizePath(`${base}/${decoded}`);
 };
 
-const validateLocalTarget = async (fromFile, target, errors) => {
+const decodeAnchor = (anchor) => {
+  try {
+    return decodeURIComponent(anchor);
+  } catch {
+    return anchor;
+  }
+};
+
+const slugifyHeading = (heading) =>
+  heading
+    .replace(/<[^>]+>/g, "")
+    .replace(/`([^`]*)`/g, "$1")
+    .replace(/\[([^\]]+)]\([^)]+\)/g, "$1")
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s-]/gu, "")
+    .replace(/\s+/g, "-");
+
+const headingAnchors = async (file, cache) => {
+  if (cache.has(file)) return cache.get(file);
+  const src = await Deno.readTextFile(file);
+  const anchors = new Set();
+  const counts = new Map();
+  for (const line of stripCodeBlocks(src).split(/\r?\n/)) {
+    const match = line.match(/^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$/);
+    if (!match) continue;
+    const base = slugifyHeading(match[1]);
+    if (base === "") continue;
+    const count = counts.get(base) ?? 0;
+    counts.set(base, count + 1);
+    anchors.add(count === 0 ? base : `${base}-${count}`);
+  }
+  cache.set(file, anchors);
+  return anchors;
+};
+
+const validateLocalTarget = async (fromFile, target, errors, anchorCache) => {
   if (isTemplatePlaceholder(target)) return;
   const resolved = resolveTarget(fromFile, target);
   if (!resolved) return;
@@ -233,6 +315,17 @@ const validateLocalTarget = async (fromFile, target, errors) => {
     errors.push({
       file: fromFile,
       message: `missing local link target: ${target} -> ${resolved}`,
+    });
+    return;
+  }
+  const { anchor } = splitTarget(target);
+  if (anchor === "" || !resolved.endsWith(".md")) return;
+  const anchors = await headingAnchors(resolved, anchorCache);
+  const slug = slugifyHeading(decodeAnchor(anchor));
+  if (!anchors.has(slug)) {
+    errors.push({
+      file: fromFile,
+      message: `missing markdown anchor: ${target} -> ${resolved}#${slug}`,
     });
   }
 };
@@ -415,11 +508,12 @@ const run = async () => {
   const inScope = makeInScope(scope);
   const scoped = scope !== null;
   const files = (await markdownFiles()).filter(inScope);
+  const anchorCache = new Map();
 
   for (const file of files) {
     const src = await Deno.readTextFile(file);
-    for (const target of extractMarkdownTargets(src)) {
-      await validateLocalTarget(file, target, errors);
+    for (const target of extractMarkdownTargets(file, src, errors)) {
+      await validateLocalTarget(file, target, errors, anchorCache);
     }
 
     const { attrs, error } = parseFrontMatter(src);
@@ -433,7 +527,7 @@ const run = async () => {
           file,
           message: "front matter references must be an array",
         });
-      } else {
+      } else if (!isValidatorFixture(file)) {
         for (const ref of attrs.references) {
           if (typeof ref !== "string") {
             errors.push({
@@ -442,7 +536,7 @@ const run = async () => {
             });
             continue;
           }
-          await validateLocalTarget(file, ref, errors);
+          await validateLocalTarget(file, ref, errors, anchorCache);
         }
       }
     }
