@@ -10,6 +10,7 @@ updated_at: 2026-07-22
 references: []
 related_issues: []
 related_prs: []
+fixture_path: _docs/qa/Core/schema-marker/test-plan.md
 ---
 
 # Known QA schema marker

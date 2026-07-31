@@ -8,6 +8,7 @@ updated_at: 2026-07-22
 references: []
 related_issues: []
 related_prs: []
+fixture_path: _docs/intent/Core/schema-marker/decision.md
 ---
 
 # Known intent schema marker

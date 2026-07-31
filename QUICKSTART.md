@@ -79,7 +79,7 @@ uv run ruff check .
 
 ### Agent lifecycle hooks
 
-Codexは[`.codex/hooks.json`](.codex/hooks.json)、Claude Codeは[`.claude/settings.json`](.claude/settings.json)から共通の[`scripts/agent-workflow-hook.mjs`](scripts/agent-workflow-hook.mjs)を呼びます。hookはworkflow contextと安全確認を補助しますが、docsの自動更新やQA evidenceの代替は行いません。初回利用時は各agentのhook設定を確認してください。
+Codexは[`.codex/hooks.json`](.codex/hooks.json)、Claude Codeは[`.claude/settings.json`](.claude/settings.json)から共通の[`scripts/agent-workflow-hook.ts`](scripts/agent-workflow-hook.ts)を呼びます。Stop hookはgit subprocessの環境を安全に整えるため`--allow-env`を含む権限契約で実行します。hookはworkflow contextと安全確認を補助しますが、Riskやscopeを自動決定せず、docsの自動更新やQA evidenceの代替も行いません。初回利用時は各agentのhook設定を確認してください。
 
 久しぶりの再開、handoff探索、docsのstale確認にはread-onlyの`docs-inventory` skillを使います。整理を実行する場合は棚卸し結果を確認してから`docs-cleanup`へ進みます。
 

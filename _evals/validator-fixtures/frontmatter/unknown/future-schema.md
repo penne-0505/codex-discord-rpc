@@ -8,6 +8,7 @@ updated_at: 2026-07-22
 references: []
 related_issues: []
 related_prs: []
+fixture_path: _docs/guide/Core/schema-marker/usage.md
 ---
 
 # Unknown future schema marker
